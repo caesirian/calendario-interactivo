@@ -1,15 +1,20 @@
-// script.js - CÓDIGO COMPLETO Y FUNCIONAL
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxrXNbTPO3924a7xPA0hvUmLStpaScxN_MKpiFJ3dMC_D6PQa5vSQHr1bxxWd2hDnchBA/exec';
-// Variables globales
+// script.js - VERSIÓN MEJORADA CON TODAS LAS FUNCIONALIDADES
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/TU_SCRIPT_ID/exec';
+
 let currentDate = new Date();
 let events = [];
 let selectedDate = null;
 
-// CONFIGURAR EVENT LISTENERS - ESTA ES LA FUNCIÓN QUE FALTABA
+// INICIALIZACIÓN
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Iniciando aplicación mejorada...');
+    setupEventListeners();
+    setupColorPicker();
+    checkConnection();
+});
+
+// CONFIGURAR EVENT LISTENERS
 function setupEventListeners() {
-    console.log('Configurando event listeners...');
-    
-    // Formulario de eventos
     const eventForm = document.getElementById('eventForm');
     if (eventForm) {
         eventForm.addEventListener('submit', async function(e) {
@@ -18,7 +23,6 @@ function setupEventListeners() {
         });
     }
 
-    // Cerrar modal al hacer clic fuera
     window.addEventListener('click', function(e) {
         const modal = document.getElementById('eventModal');
         if (e.target === modal) {
@@ -27,85 +31,152 @@ function setupEventListeners() {
     });
 }
 
-// INICIALIZACIÓN
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Inicializando calendario...');
-    setupEventListeners();
-    checkAPIStatus();
-    loadEvents();
-    renderCalendar();
-});
-
-// Verificar estado de la API
-async function checkAPIStatus() {
-    try {
-        showLoading(true);
-        const response = await fetch(GAS_WEB_APP_URL);
-        
-        const statusDot = document.querySelector('.status-dot');
-        const statusText = document.getElementById('statusText');
-        
-        if (response.ok) {
-            statusDot.style.background = '#28a745';
-            statusText.textContent = 'Conectado a Google Sheets';
-            showNotification('✅ Conexión exitosa', 'success');
-        } else {
-            statusDot.style.background = '#ffc107';
-            statusText.textContent = 'Conexión limitada';
-        }
-    } catch (error) {
-        console.error('Error de conexión:', error);
-        const statusDot = document.querySelector('.status-dot');
-        const statusText = document.getElementById('statusText');
-        statusDot.style.background = '#dc3545';
-        statusText.textContent = 'Error de conexión';
-        showNotification('❌ No se pudo conectar al servidor', 'error');
-    } finally {
-        showLoading(false);
-    }
+// CONFIGURAR SELECTOR DE COLOR
+function setupColorPicker() {
+    const colorOptions = document.querySelectorAll('.color-option');
+    const colorInput = document.getElementById('eventColor');
+    
+    colorOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            const color = this.getAttribute('data-color');
+            colorInput.value = color;
+            
+            // Remover clase active de todos
+            colorOptions.forEach(opt => opt.classList.remove('active'));
+            // Agregar clase active al seleccionado
+            this.classList.add('active');
+        });
+    });
 }
 
-// Cargar eventos
-async function loadEvents() {
+// VERIFICAR CONEXIÓN
+async function checkConnection() {
     try {
         showLoading(true);
-        console.log('Cargando eventos...');
+        const response = await fetch(GAS_WEB_APP_URL + '?action=test');
         
-        const params = new URLSearchParams({ action: 'getEvents' });
-        
-        const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: params
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Error HTTP: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
         const result = await response.json();
-        console.log('Respuesta:', result);
         
         if (result.success) {
-            events = result.events || [];
-            console.log(`${events.length} eventos cargados`);
-            renderCalendar();
+            updateStatus('Conectado a Google Sheets', 'success');
+            showNotification('✅ ' + result.message, 'success');
+            await loadEvents();
         } else {
             throw new Error(result.message);
         }
-        
     } catch (error) {
-        console.error('Error cargando eventos:', error);
-        showNotification('Error cargando eventos', 'error');
-        loadSampleData(); // Usar datos de ejemplo
+        console.error('Error de conexión:', error);
+        updateStatus('Error de conexión', 'error');
+        showNotification('❌ ' + error.message, 'error');
+        loadSampleData();
     } finally {
         showLoading(false);
     }
 }
 
-// Renderizar calendario
+// CARGAR EVENTOS DESDE GAS
+async function loadEvents() {
+    try {
+        showLoading(true);
+        const response = await fetch(GAS_WEB_APP_URL + '?action=getEvents');
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            events = result.events || [];
+            renderCalendar();
+            hideEventsList(); // Ocultar lista al cargar/recargar
+            showNotification('✅ ' + result.message, 'success');
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        console.error('Error cargando eventos:', error);
+        showNotification('❌ Error: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// GUARDAR EVENTO MEJORADO
+async function saveEventFromForm() {
+    const eventData = {
+        id: document.getElementById('editId').value,
+        date: document.getElementById('eventDate').value,
+        time: document.getElementById('eventTime').value,
+        title: document.getElementById('eventTitle').value,
+        description: document.getElementById('eventDescription').value, // NUEVO CAMPO
+        location: document.getElementById('eventLocation').value,
+        organizer: document.getElementById('eventOrganizer').value,
+        guests: document.getElementById('eventGuests').value,
+        color: document.getElementById('eventColor').value // NUEVO CAMPO
+    };
+    
+    try {
+        showLoading(true);
+        
+        const params = new URLSearchParams({
+            action: 'saveEvent',
+            ...eventData
+        });
+        
+        const response = await fetch(GAS_WEB_APP_URL + '?' + params.toString());
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ ' + result.message, 'success');
+            closeEventModal();
+            await loadEvents();
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        console.error('Error guardando evento:', error);
+        showNotification('❌ Error: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ELIMINAR EVENTO
+async function deleteEvent() {
+    const eventId = document.getElementById('editId').value;
+    
+    if (!eventId || !confirm('¿Estás seguro de que quieres eliminar este evento?')) {
+        return;
+    }
+    
+    try {
+        showLoading(true);
+        const response = await fetch(GAS_WEB_APP_URL + '?action=deleteEvent&id=' + eventId);
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ ' + result.message, 'success');
+            closeEventModal();
+            await loadEvents();
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        console.error('Error eliminando evento:', error);
+        showNotification('❌ Error: ' + error.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// RENDERIZAR CALENDARIO MEJORADO
 function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
@@ -126,7 +197,6 @@ function renderCalendar() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
-    // Actualizar título del mes
     currentMonth.textContent = currentDate.toLocaleDateString('es-ES', { 
         month: 'long', 
         year: 'numeric' 
@@ -162,13 +232,22 @@ function renderCalendar() {
             day.classList.add('today');
         }
         
-        // Verificar si tiene eventos
+        // Verificar si tiene eventos - MEJORADO CON COLORES Y LÍNEAS
         const dayEvents = getEventsForDate(dateStr);
         if (dayEvents.length > 0) {
             day.classList.add('has-events');
             const eventsIndicator = document.createElement('div');
             eventsIndicator.className = 'events-indicator';
-            eventsIndicator.innerHTML = '<span class="event-dot"></span>'.repeat(Math.min(dayEvents.length, 3));
+            
+            // Crear líneas de colores para cada evento (máximo 4 líneas)
+            dayEvents.slice(0, 4).forEach(event => {
+                const eventLine = document.createElement('div');
+                eventLine.className = 'event-line';
+                eventLine.style.backgroundColor = event.color || '#4facfe';
+                eventLine.title = event.title; // Tooltip
+                eventsIndicator.appendChild(eventLine);
+            });
+            
             day.appendChild(eventsIndicator);
         }
         
@@ -187,13 +266,13 @@ function renderCalendar() {
     }
 }
 
-// Obtener eventos para una fecha
+// OBTENER EVENTOS PARA FECHA
 function getEventsForDate(date) {
     return events.filter(event => event.date === date)
                  .sort((a, b) => a.time.localeCompare(b.time));
 }
 
-// Seleccionar fecha
+// SELECCIONAR FECHA - MEJORADO
 function selectDate(date, dayElement) {
     selectedDate = date;
     
@@ -207,9 +286,10 @@ function selectDate(date, dayElement) {
     
     // Mostrar eventos del día
     showDayEvents(date);
+    showEventsList();
 }
 
-// Mostrar eventos del día
+// MOSTRAR EVENTOS DEL DÍA - MEJORADO CON DESCRIPCIÓN Y COLOR
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -222,18 +302,42 @@ function showDayEvents(date) {
     }
     
     eventsContainer.innerHTML = dayEvents.map((event, index) => `
-        <div class="event-item" onclick="editEvent(${index})">
-            <div class="event-time">${event.time}</div>
+        <div class="event-item" onclick="editEvent(${index})" style="border-left-color: ${event.color || '#4facfe'}">
+            <div class="event-time">
+                <span class="event-color-indicator" style="background-color: ${event.color || '#4facfe'}"></span>
+                ${event.time}
+            </div>
             <div class="event-title">${event.title}</div>
+            ${event.description ? `<div class="event-description">${event.description}</div>` : ''}
             <div class="event-details">
                 ${event.location ? `<strong>Lugar:</strong> ${event.location}<br>` : ''}
-                ${event.organizer ? `<strong>Organizador:</strong> ${event.organizer}` : ''}
+                ${event.organizer ? `<strong>Organizador:</strong> ${event.organizer}<br>` : ''}
+                ${event.guests ? `<strong>Invitados:</strong> ${event.guests}` : ''}
             </div>
         </div>
     `).join('');
 }
 
-// Mostrar modal de evento
+// MOSTRAR/OCULTAR LISTA DE EVENTOS
+function showEventsList() {
+    const eventsList = document.getElementById('eventsList');
+    if (eventsList) {
+        eventsList.style.display = 'block';
+        eventsList.classList.remove('hidden');
+        eventsList.classList.add('visible');
+    }
+}
+
+function hideEventsList() {
+    const eventsList = document.getElementById('eventsList');
+    if (eventsList) {
+        eventsList.style.display = 'none';
+        eventsList.classList.remove('visible');
+        eventsList.classList.add('hidden');
+    }
+}
+
+// MODAL DE EVENTOS - MEJORADO
 function showEventModal(event = null) {
     if (!selectedDate && !event) {
         showNotification('Por favor, selecciona una fecha primero', 'error');
@@ -242,6 +346,10 @@ function showEventModal(event = null) {
     
     const modal = document.getElementById('eventModal');
     const deleteBtn = document.getElementById('deleteBtn');
+    const colorInput = document.getElementById('eventColor');
+    
+    // Resetear presets de color
+    document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('active'));
     
     if (event) {
         // Modo edición
@@ -250,9 +358,18 @@ function showEventModal(event = null) {
         document.getElementById('eventDate').value = event.date;
         document.getElementById('eventTime').value = event.time;
         document.getElementById('eventTitle').value = event.title;
+        document.getElementById('eventDescription').value = event.description || '';
         document.getElementById('eventLocation').value = event.location || '';
         document.getElementById('eventOrganizer').value = event.organizer || '';
         document.getElementById('eventGuests').value = event.guests || '';
+        colorInput.value = event.color || '#4facfe';
+        
+        // Activar preset de color si existe
+        const matchingPreset = document.querySelector(`.color-option[data-color="${event.color}"]`);
+        if (matchingPreset) {
+            matchingPreset.classList.add('active');
+        }
+        
         deleteBtn.style.display = 'block';
     } else {
         // Modo creación
@@ -260,147 +377,73 @@ function showEventModal(event = null) {
         document.getElementById('eventForm').reset();
         document.getElementById('eventDate').value = selectedDate;
         document.getElementById('eventTime').value = '09:00';
+        colorInput.value = '#4facfe';
+        
+        // Activar preset por defecto
+        const defaultPreset = document.querySelector('.color-option[data-color="#4facfe"]');
+        if (defaultPreset) {
+            defaultPreset.classList.add('active');
+        }
+        
         deleteBtn.style.display = 'none';
     }
     
     modal.style.display = 'block';
 }
 
-// Cerrar modal
 function closeEventModal() {
     document.getElementById('eventModal').style.display = 'none';
 }
 
-// Guardar evento desde formulario
-async function saveEventFromForm() {
-    const eventData = {
-        id: document.getElementById('editId').value,
-        date: document.getElementById('eventDate').value,
-        time: document.getElementById('eventTime').value,
-        title: document.getElementById('eventTitle').value,
-        location: document.getElementById('eventLocation').value,
-        organizer: document.getElementById('eventOrganizer').value,
-        guests: document.getElementById('eventGuests').value
-    };
-    
-    try {
-        showLoading(true);
-        const params = new URLSearchParams({
-            action: 'saveEvent',
-            ...eventData
-        });
-        
-        const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: params
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showNotification('Evento guardado correctamente', 'success');
-            closeEventModal();
-            await loadEvents();
-        } else {
-            throw new Error(result.message);
-        }
-        
-    } catch (error) {
-        console.error('Error guardando evento:', error);
-        showNotification('Error guardando evento: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
-    }
-}
-
-// Editar evento
+// EDITAR EVENTO
 function editEvent(index) {
     const event = events[index];
     showEventModal(event);
 }
 
-// Eliminar evento
-async function deleteEvent() {
-    const eventId = document.getElementById('editId').value;
-    
-    if (!eventId || !confirm('¿Estás seguro de que quieres eliminar este evento?')) {
-        return;
-    }
-    
-    try {
-        showLoading(true);
-        const params = new URLSearchParams({
-            action: 'deleteEvent',
-            id: eventId
-        });
-        
-        const response = await fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: params
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showNotification('Evento eliminado', 'success');
-            closeEventModal();
-            await loadEvents();
-        } else {
-            throw new Error(result.message);
-        }
-        
-    } catch (error) {
-        console.error('Error eliminando evento:', error);
-        showNotification('Error eliminando evento: ' + error.message, 'error');
-    } finally {
-        showLoading(false);
-    }
-}
-
-// Cambiar mes
+// CAMBIAR MES - MEJORADO (OCULTA LISTA DE EVENTOS)
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
     renderCalendar();
+    hideEventsList(); // OCULTAR lista al cambiar de mes
+    selectedDate = null; // Resetear fecha seleccionada
+    
+    showNotification(`📅 Cambiado a ${currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`, 'success');
 }
 
-// Funciones auxiliares
-function showNotification(message, type) {
-    // Crear notificación si no existe
-    let notification = document.getElementById('notification');
-    if (!notification) {
-        notification = document.createElement('div');
-        notification.id = 'notification';
-        document.body.appendChild(notification);
+// FUNCIONES AUXILIARES
+function updateStatus(message, type) {
+    const statusDot = document.querySelector('.status-dot');
+    const statusText = document.getElementById('statusText');
+    if (statusDot && statusText) {
+        statusText.textContent = message;
+        statusDot.style.background = 
+            type === 'success' ? '#28a745' : 
+            type === 'error' ? '#dc3545' : '#ffc107';
     }
+}
+
+function showNotification(message, type) {
+    const notification = document.getElementById('notification');
+    if (!notification) return;
     
     notification.textContent = message;
     notification.className = `notification ${type} show`;
     
     setTimeout(() => {
         notification.classList.remove('show');
-    }, 3000);
+    }, 4000);
 }
 
 function showLoading(show) {
     const loading = document.getElementById('loading');
     if (loading) {
-        if (show) {
-            loading.classList.add('show');
-        } else {
-            loading.classList.remove('show');
-        }
+        loading.style.display = show ? 'block' : 'none';
     }
 }
 
-// Datos de ejemplo para fallback
+// DATOS DE EJEMPLO MEJORADOS
 function loadSampleData() {
-    console.log('Cargando datos de ejemplo...');
     const today = new Date().toISOString().split('T')[0];
     events = [
         {
@@ -408,26 +451,29 @@ function loadSampleData() {
             date: today,
             time: '10:00',
             title: 'Reunión de equipo',
+            description: 'Revisión semanal de proyectos y planificación',
             location: 'Oficina Principal',
             organizer: 'Juan Pérez',
-            guests: 'maria@empresa.com, carlos@empresa.com'
+            guests: 'maria@empresa.com, carlos@empresa.com',
+            color: '#4facfe'
         },
         {
             id: 2,
             date: today,
             time: '14:30',
             title: 'Almuerzo con cliente',
+            description: 'Presentación de nuevas propuestas comerciales',
             location: 'Restaurante Downtown',
             organizer: 'Ana García',
-            guests: 'cliente@empresa.com'
+            guests: 'cliente@empresa.com',
+            color: '#43e97b'
         }
     ];
-    
     renderCalendar();
     showNotification('Usando datos de ejemplo - Verifica la conexión', 'error');
 }
 
-// Hacer funciones globales
+// FUNCIONES GLOBALES
 window.changeMonth = changeMonth;
 window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
