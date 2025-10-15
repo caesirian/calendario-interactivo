@@ -1,0 +1,64 @@
+/* ESTILOS PRINCIPALES - RESPONSIVE Y MODERNO */
+
+/* Variables CSS para consistencia */
+:root {
+    --primary-color: #007bff;
+    --success-color: #28a745;
+    --danger-color: #dc3545;
+    --warning-color: #ffc107;
+    --secondary-color: #6c757d;
+}
+
+/* Estructura base del calendario */
+.calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background: #dee2e6;
+}
+
+.day {
+    background: white;
+    min-height: 120px;
+    padding: 8px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.day.has-events {
+    background: #e7f3ff;
+    border-left: 3px solid var(--primary-color);
+}
+
+/* Indicador de eventos */
+.events-indicator {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+}
+
+.event-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    margin: 1px;
+}
+
+/* Modal styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background: white;
+    margin: 5% auto;
+    padding: 30px;
+    border-radius: 10px;
+    width: 90%;
+    max-width: 500px;
+}
