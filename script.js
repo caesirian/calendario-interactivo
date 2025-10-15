@@ -1,28 +1,22 @@
-// Configuración - URL de tu Google Apps Script
+// script.js - CÓDIGO COMPLETO Y FUNCIONAL
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxFh-E5KVpZiOhHQWUaFM3yAe8xWp2LW_mh1uOkSxHXg75w-VjakDPnLKkS6EEbNjNX/exec';
-
 // Variables globales
 let currentDate = new Date();
 let events = [];
 let selectedDate = null;
 
-// Inicialización cuando se carga la página
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Inicializando calendario...');
-    setupEventListeners();
-    checkAPIStatus();
-    loadEvents();
-});
-
-// Configurar todos los event listeners
+// CONFIGURAR EVENT LISTENERS - ESTA ES LA FUNCIÓN QUE FALTABA
 function setupEventListeners() {
-    console.log('⚙️ Configurando event listeners...');
+    console.log('Configurando event listeners...');
     
     // Formulario de eventos
-    document.getElementById('eventForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        await saveEventFromForm();
-    });
+    const eventForm = document.getElementById('eventForm');
+    if (eventForm) {
+        eventForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await saveEventFromForm();
+        });
+    }
 
     // Cerrar modal al hacer clic fuera
     window.addEventListener('click', function(e) {
@@ -31,11 +25,18 @@ function setupEventListeners() {
             closeEventModal();
         }
     });
-
-    console.log('✅ Event listeners configurados');
 }
 
-// Verificar estado de la conexión con GAS
+// INICIALIZACIÓN
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Inicializando calendario...');
+    setupEventListeners();
+    checkAPIStatus();
+    loadEvents();
+    renderCalendar();
+});
+
+// Verificar estado de la API
 async function checkAPIStatus() {
     try {
         showLoading(true);
@@ -47,14 +48,13 @@ async function checkAPIStatus() {
         if (response.ok) {
             statusDot.style.background = '#28a745';
             statusText.textContent = 'Conectado a Google Sheets';
-            showNotification('✅ Conexión exitosa con el servidor', 'success');
+            showNotification('✅ Conexión exitosa', 'success');
         } else {
             statusDot.style.background = '#ffc107';
             statusText.textContent = 'Conexión limitada';
-            showNotification('⚠️ Conexión limitada con el servidor', 'error');
         }
     } catch (error) {
-        console.error('❌ Error de conexión:', error);
+        console.error('Error de conexión:', error);
         const statusDot = document.querySelector('.status-dot');
         const statusText = document.getElementById('statusText');
         statusDot.style.background = '#dc3545';
@@ -65,15 +65,13 @@ async function checkAPIStatus() {
     }
 }
 
-// Cargar eventos desde Google Sheets
+// Cargar eventos
 async function loadEvents() {
     try {
         showLoading(true);
-        console.log('📥 Cargando eventos...');
+        console.log('Cargando eventos...');
         
-        const params = new URLSearchParams({
-            action: 'getEvents'
-        });
+        const params = new URLSearchParams({ action: 'getEvents' });
         
         const response = await fetch(GAS_WEB_APP_URL, {
             method: 'POST',
@@ -88,37 +86,35 @@ async function loadEvents() {
         }
         
         const result = await response.json();
-        console.log('📊 Respuesta del servidor:', result);
+        console.log('Respuesta:', result);
         
         if (result.success) {
-            events = result.events;
-            console.log(`✅ ${events.length} eventos cargados`);
+            events = result.events || [];
+            console.log(`${events.length} eventos cargados`);
             renderCalendar();
-            showNotification(`📅 ${events.length} eventos cargados`, 'success');
         } else {
             throw new Error(result.message);
         }
         
     } catch (error) {
-        console.error('❌ Error cargando eventos:', error);
-        showNotification('❌ Error cargando eventos: ' + error.message, 'error');
-        // Fallback a datos de ejemplo
-        loadSampleData();
+        console.error('Error cargando eventos:', error);
+        showNotification('Error cargando eventos', 'error');
+        loadSampleData(); // Usar datos de ejemplo
     } finally {
         showLoading(false);
     }
 }
 
-// Renderizar el calendario
+// Renderizar calendario
 function renderCalendar() {
-    console.log('🎨 Renderizando calendario...');
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
     
-    // Limpiar calendario
+    if (!calendar) return;
+    
     calendar.innerHTML = '';
     
-    // Encabezados de días de la semana
+    // Encabezados de días
     const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     daysOfWeek.forEach(day => {
         const dayHeader = document.createElement('div');
@@ -136,10 +132,9 @@ function renderCalendar() {
         year: 'numeric' 
     }).toUpperCase();
     
-    // Calcular fechas importantes
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const startingDay = firstDay.getDay(); // 0 = Domingo
+    const startingDay = firstDay.getDay();
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     
     // Días del mes anterior
@@ -173,39 +168,33 @@ function renderCalendar() {
             day.classList.add('has-events');
             const eventsIndicator = document.createElement('div');
             eventsIndicator.className = 'events-indicator';
-            // Mostrar hasta 3 puntos indicadores
             eventsIndicator.innerHTML = '<span class="event-dot"></span>'.repeat(Math.min(dayEvents.length, 3));
             day.appendChild(eventsIndicator);
         }
         
-        // Event listener para seleccionar día
         day.addEventListener('click', () => selectDate(dateStr, day));
         calendar.appendChild(day);
     }
     
-    // Días del siguiente mes para completar la grilla
-    const totalCells = 42; // 6 semanas * 7 días
+    // Días del siguiente mes
+    const totalCells = 42;
     const remainingCells = totalCells - calendar.children.length;
-    
     for (let i = 1; i <= remainingCells; i++) {
         const day = document.createElement('div');
         day.className = 'day other-month';
         day.innerHTML = `<div class="day-number">${i}</div>`;
         calendar.appendChild(day);
     }
-    
-    console.log('✅ Calendario renderizado');
 }
 
-// Obtener eventos para una fecha específica
+// Obtener eventos para una fecha
 function getEventsForDate(date) {
     return events.filter(event => event.date === date)
                  .sort((a, b) => a.time.localeCompare(b.time));
 }
 
-// Seleccionar una fecha en el calendario
+// Seleccionar fecha
 function selectDate(date, dayElement) {
-    console.log('📅 Fecha seleccionada:', date);
     selectedDate = date;
     
     // Remover selección anterior
@@ -216,14 +205,16 @@ function selectDate(date, dayElement) {
     // Agregar selección actual
     dayElement.classList.add('selected');
     
-    // Mostrar eventos del día seleccionado
+    // Mostrar eventos del día
     showDayEvents(date);
 }
 
-// Mostrar eventos del día seleccionado
+// Mostrar eventos del día
 function showDayEvents(date) {
-    const dayEvents = getEventsForDate(date);
     const eventsContainer = document.getElementById('dayEvents');
+    if (!eventsContainer) return;
+    
+    const dayEvents = getEventsForDate(date);
     
     if (dayEvents.length === 0) {
         eventsContainer.innerHTML = '<p class="no-events">No hay eventos para este día</p>';
@@ -236,17 +227,16 @@ function showDayEvents(date) {
             <div class="event-title">${event.title}</div>
             <div class="event-details">
                 ${event.location ? `<strong>Lugar:</strong> ${event.location}<br>` : ''}
-                ${event.organizer ? `<strong>Organizador:</strong> ${event.organizer}<br>` : ''}
-                ${event.guests ? `<strong>Invitados:</strong> ${event.guests}` : ''}
+                ${event.organizer ? `<strong>Organizador:</strong> ${event.organizer}` : ''}
             </div>
         </div>
     `).join('');
 }
 
-// Mostrar modal para crear/editar evento
+// Mostrar modal de evento
 function showEventModal(event = null) {
     if (!selectedDate && !event) {
-        showNotification('⚠️ Por favor, selecciona una fecha primero', 'error');
+        showNotification('Por favor, selecciona una fecha primero', 'error');
         return;
     }
     
@@ -281,7 +271,7 @@ function closeEventModal() {
     document.getElementById('eventModal').style.display = 'none';
 }
 
-// Guardar evento desde el formulario
+// Guardar evento desde formulario
 async function saveEventFromForm() {
     const eventData = {
         id: document.getElementById('editId').value,
@@ -311,22 +301,22 @@ async function saveEventFromForm() {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('✅ ' + result.message, 'success');
+            showNotification('Evento guardado correctamente', 'success');
             closeEventModal();
-            await loadEvents(); // Recargar eventos
+            await loadEvents();
         } else {
             throw new Error(result.message);
         }
         
     } catch (error) {
-        console.error('❌ Error guardando evento:', error);
-        showNotification('❌ Error: ' + error.message, 'error');
+        console.error('Error guardando evento:', error);
+        showNotification('Error guardando evento: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
 }
 
-// Editar evento existente
+// Editar evento
 function editEvent(index) {
     const event = events[index];
     showEventModal(event);
@@ -358,16 +348,16 @@ async function deleteEvent() {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('✅ ' + result.message, 'success');
+            showNotification('Evento eliminado', 'success');
             closeEventModal();
-            await loadEvents(); // Recargar eventos
+            await loadEvents();
         } else {
             throw new Error(result.message);
         }
         
     } catch (error) {
-        console.error('❌ Error eliminando evento:', error);
-        showNotification('❌ Error: ' + error.message, 'error');
+        console.error('Error eliminando evento:', error);
+        showNotification('Error eliminando evento: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
@@ -377,36 +367,45 @@ async function deleteEvent() {
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
     renderCalendar();
-    showNotification(`📅 Cambiado a ${currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`, 'success');
 }
 
 // Funciones auxiliares
 function showNotification(message, type) {
-    const notification = document.getElementById('notification');
+    // Crear notificación si no existe
+    let notification = document.getElementById('notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'notification';
+        document.body.appendChild(notification);
+    }
+    
     notification.textContent = message;
     notification.className = `notification ${type} show`;
     
     setTimeout(() => {
         notification.classList.remove('show');
-    }, 4000);
+    }, 3000);
 }
 
 function showLoading(show) {
     const loading = document.getElementById('loading');
-    if (show) {
-        loading.classList.add('show');
-    } else {
-        loading.classList.remove('show');
+    if (loading) {
+        if (show) {
+            loading.classList.add('show');
+        } else {
+            loading.classList.remove('show');
+        }
     }
 }
 
 // Datos de ejemplo para fallback
 function loadSampleData() {
-    console.log('📋 Cargando datos de ejemplo...');
+    console.log('Cargando datos de ejemplo...');
+    const today = new Date().toISOString().split('T')[0];
     events = [
         {
             id: 1,
-            date: new Date().toISOString().split('T')[0],
+            date: today,
             time: '10:00',
             title: 'Reunión de equipo',
             location: 'Oficina Principal',
@@ -415,7 +414,7 @@ function loadSampleData() {
         },
         {
             id: 2,
-            date: new Date().toISOString().split('T')[0],
+            date: today,
             time: '14:30',
             title: 'Almuerzo con cliente',
             location: 'Restaurante Downtown',
@@ -425,14 +424,12 @@ function loadSampleData() {
     ];
     
     renderCalendar();
-    showNotification('⚠️ Usando datos de ejemplo - Verifica la conexión', 'error');
+    showNotification('Usando datos de ejemplo - Verifica la conexión', 'error');
 }
 
-// Hacer funciones globales para los botones HTML
+// Hacer funciones globales
 window.changeMonth = changeMonth;
 window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
 window.editEvent = editEvent;
 window.showEventModal = showEventModal;
-
-console.log('🎉 Script cargado correctamente');
