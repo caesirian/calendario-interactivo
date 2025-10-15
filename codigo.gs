@@ -1,123 +1,242 @@
-// CONFIGURACIÓN PRINCIPAL
-var SHEET_ID = '1uuszItq9nuwssQR-OaWkTuqMeBsabj1ViDj7pHFCI8I';  // ID de Google Sheets
+// Código GAS - VERSIÓN MEJORADA
+var SHEET_ID = '1uuszItq9nuwssQR-OaWkTuqMeBsabj1ViDj7pHFCI8I';
 var SHEET_NAME = 'Eventos';
 
-// PUNTO DE ENTRADA PARA PETICIONES GET
+// Función para peticiones GET
 function doGet(e) {
-  return ContentService.createTextOutput(JSON.stringify({version: "1.0"}))
-    .setMimeType(ContentService.MimeType.JSON);
+  return handleRequest(e);
 }
 
-// PUNTO DE ENTRADA PARA PETICIONES POST - CORAZÓN DE LA API
+// Función para peticiones POST  
 function doPost(e) {
+  return handleRequest(e);
+}
+
+// Manejar todas las peticiones
+function handleRequest(e) {
   try {
-    var action = e.parameter.action;  // Determina qué acción ejecutar
+    var action = e.parameter.action;
+    
+    if (!action) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        message: "Se requiere parámetro 'action'",
+        availableActions: ["test", "getEvents", "saveEvent", "deleteEvent"]
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var result;
     
     switch(action) {
-      case 'getEvents':    return getEvents();      // Obtener eventos
-      case 'saveEvent':    return saveEvent(e.parameter);  // Guardar evento
-      case 'deleteEvent':  return deleteEvent(e.parameter.id); // Eliminar evento
-      default: return errorResponse('Acción no válida');
+      case 'test':
+        result = { 
+          success: true, 
+          message: "✅ API funcionando correctamente",
+          timestamp: new Date()
+        };
+        break;
+      case 'getEvents':
+        result = getEvents();
+        break;
+      case 'saveEvent':
+        result = saveEvent(e.parameter);
+        break;
+      case 'deleteEvent':
+        result = deleteEvent(e.parameter.id);
+        break;
+      default:
+        result = { 
+          success: false, 
+          message: '❌ Acción no válida: ' + action
+        };
     }
+    
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+      
   } catch (error) {
-    return errorResponse(error.toString());
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      message: '❌ Error: ' + error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
   }
 }
 
-// OBTENER TODOS LOS EVENTOS DESDE GOOGLE SHEETS
+// Obtener todos los eventos
 function getEvents() {
   try {
     var sheet = getSheet();
     var data = sheet.getDataRange().getValues();
     var events = [];
     
-    // Procesar filas (saltando encabezados)
     for (var i = 1; i < data.length; i++) {
-      if (data[i][0]) {
+      var row = data[i];
+      if (row[0] && row[0].toString().trim() !== '') {
         events.push({
-          id: i,  // ID basado en número de fila
-          date: data[i][0],      // Fecha
-          time: data[i][1],      // Hora
-          title: data[i][2],     // Título
-          location: data[i][3],  // Lugar
-          organizer: data[i][4], // Organizador
-          guests: data[i][5]     // Invitados
+          id: i,
+          date: formatDate(row[0]),
+          time: row[1] || '',
+          title: row[2] || '',
+          location: row[3] || '',
+          organizer: row[4] || '',
+          guests: row[5] || '',
+          description: row[6] || '', // NUEVO CAMPO
+          color: row[7] || '#4facfe' // NUEVO CAMPO - Color por defecto
         });
       }
     }
     
-    return successResponse({events: events});
+    return {
+      success: true,
+      events: events,
+      total: events.length,
+      message: '📅 ' + events.length + ' eventos encontrados'
+    };
+    
   } catch (error) {
-    return errorResponse(error.toString());
+    return {
+      success: false,
+      message: '❌ Error obteniendo eventos: ' + error.toString()
+    };
   }
 }
 
-// GUARDAR EVENTO (CREAR O ACTUALIZAR)
+// Guardar evento (crear o actualizar)
 function saveEvent(params) {
   try {
     var sheet = getSheet();
-    var eventId = params.id;
     
-    // Preparar datos del evento
+    // Validar campos requeridos
+    if (!params.date) {
+      return { success: false, message: '❌ La fecha es obligatoria' };
+    }
+    if (!params.title) {
+      return { success: false, message: '❌ El título es obligatorio' };
+    }
+    
     var eventData = [
       params.date,
-      params.time,
+      params.time || '00:00',
       params.title,
       params.location || '',
       params.organizer || '',
-      params.guests || ''
+      params.guests || '',
+      params.description || '', // NUEVO CAMPO
+      params.color || '#4facfe' // NUEVO CAMPO
     ];
     
-    if (eventId && eventId !== 'null') {
+    if (params.id && params.id !== 'null' && params.id !== '') {
       // ACTUALIZAR evento existente
-      sheet.getRange(parseInt(eventId) + 1, 1, 1, 6).setValues([eventData]);
+      var rowNumber = parseInt(params.id);
+      if (rowNumber > 0 && rowNumber < sheet.getLastRow()) {
+        sheet.getRange(rowNumber + 1, 1, 1, 8).setValues([eventData]); // 8 columnas ahora
+        return {
+          success: true,
+          message: '✅ Evento actualizado correctamente',
+          action: 'updated',
+          id: rowNumber
+        };
+      } else {
+        return { success: false, message: '❌ El evento a actualizar no existe' };
+      }
     } else {
-      // CREAR nuevo evento
-      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([eventData]);
+      // NUEVO evento
+      var newRow = sheet.getLastRow() + 1;
+      sheet.getRange(newRow, 1, 1, 8).setValues([eventData]); // 8 columnas ahora
+      return {
+        success: true,
+        message: '✅ Evento creado correctamente',
+        action: 'created',
+        id: newRow - 1
+      };
     }
     
-    return successResponse({message: 'Evento guardado'});
   } catch (error) {
-    return errorResponse(error.toString());
+    return {
+      success: false,
+      message: '❌ Error guardando evento: ' + error.toString()
+    };
   }
 }
 
-// ELIMINAR EVENTO
+// Eliminar evento
 function deleteEvent(eventId) {
   try {
     var sheet = getSheet();
-    sheet.deleteRow(parseInt(eventId) + 1);  // +1 por los encabezados
-    return successResponse({message: 'Evento eliminado'});
+    var rowNumber = parseInt(eventId) + 1;
+    
+    if (rowNumber > 1 && rowNumber <= sheet.getLastRow()) {
+      sheet.deleteRow(rowNumber);
+      return {
+        success: true,
+        message: '✅ Evento eliminado correctamente'
+      };
+    } else {
+      return {
+        success: false,
+        message: '❌ El evento a eliminar no existe'
+      };
+    }
+    
   } catch (error) {
-    return errorResponse(error.toString());
+    return {
+      success: false,
+      message: '❌ Error eliminando evento: ' + error.toString()
+    };
   }
 }
 
-// OBTENER O CREAR HOJA DE CÁLCULO
+// Obtener o crear la hoja de cálculo
 function getSheet() {
-  var spreadsheet = SpreadsheetApp.openById(SHEET_ID);
-  var sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  try {
+    var spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+    var sheet = spreadsheet.getSheetByName(SHEET_NAME);
+    
+    if (!sheet) {
+      // Crear hoja si no existe
+      sheet = spreadsheet.insertSheet(SHEET_NAME);
+      // Configurar encabezados ACTUALIZADOS
+      var headers = [['Fecha', 'Hora', 'Título', 'Lugar', 'Organizador', 'Invitados', 'Descripción', 'Color']];
+      sheet.getRange(1, 1, 1, 8).setValues(headers);
+      // Formatear encabezados
+      sheet.getRange(1, 1, 1, 8)
+        .setFontWeight('bold')
+        .setBackground('#4facfe')
+        .setFontColor('white');
+    }
+    
+    return sheet;
+    
+  } catch (error) {
+    throw new Error('No se pudo acceder a Google Sheets');
+  }
+}
+
+// Formatear fecha consistentemente - CORREGIDO
+function formatDate(dateValue) {
+  if (!dateValue) return '';
   
-  if (!sheet) {
-    sheet = spreadsheet.insertSheet(SHEET_NAME);
-    // Crear encabezados
-    sheet.getRange('A1:F1').setValues([['Fecha', 'Hora', 'Título', 'Lugar', 'Organizador', 'Invitados']]);
+  // Si ya es string, devolver tal cual
+  if (typeof dateValue === 'string') {
+    // Validar formato de fecha
+    if (dateValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateValue;
+    }
+    // Intentar parsear si es otro formato
+    try {
+      var date = new Date(dateValue);
+      return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    } catch (e) {
+      return dateValue;
+    }
   }
   
-  return sheet;
-}
-
-// FUNCIONES AUXILIARES PARA RESPUESTAS
-function successResponse(data) {
-  return ContentService.createTextOutput(JSON.stringify({
-    success: true,
-    ...data
-  })).setMimeType(ContentService.MimeType.JSON);
-}
-
-function errorResponse(message) {
-  return ContentService.createTextOutput(JSON.stringify({
-    success: false,
-    message: message
-  })).setMimeType(ContentService.MimeType.JSON);
+  try {
+    // Si es objeto Date, formatear
+    var date = new Date(dateValue);
+    return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  } catch (error) {
+    // Si hay error, devolver como string
+    return dateValue.toString();
+  }
 }
