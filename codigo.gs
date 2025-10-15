@@ -1,5 +1,5 @@
 // CONFIGURACIÓN PRINCIPAL
-var SHEET_ID = 'tu_sheet_id_aqui';  // ID de Google Sheets
+var SHEET_ID = '1uuszItq9nuwssQR-OaWkTuqMeBsabj1ViDj7pHFCI8I';  // ID de Google Sheets
 var SHEET_NAME = 'Eventos';
 
 // PUNTO DE ENTRADA PARA PETICIONES GET
