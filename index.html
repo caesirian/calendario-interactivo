@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendario de Eventos</title>
+    <title>Calendario de Eventos Mejorado</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>📅 Calendario de Eventos</h1>
-            <p>Gestiona tus eventos con Google Sheets</p>
+            <p>Gestiona tus eventos con colores y descripciones</p>
             <div class="api-status" id="apiStatus">
                 <span class="status-dot"></span>
                 <span id="statusText">Conectando...</span>
@@ -32,7 +32,7 @@
             <div class="calendar" id="calendar"></div>
         </div>
         
-        <div class="events-list" id="eventsList">
+        <div class="events-list" id="eventsList" style="display: none;">
             <h3>Eventos del Día Seleccionado</h3>
             <div id="dayEvents" class="day-events">
                 <p class="no-events">Selecciona una fecha para ver los eventos</p>
@@ -40,38 +40,69 @@
         </div>
     </div>
 
-    <!-- Modal para eventos -->
+    <!-- Modal para eventos MEJORADO -->
     <div id="eventModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeEventModal()">&times;</span>
             <h3 id="modalTitle">Nuevo Evento</h3>
             <form id="eventForm">
                 <input type="hidden" id="editId">
+                
                 <div class="form-group">
                     <label for="eventDate">Fecha *</label>
                     <input type="date" id="eventDate" required>
                 </div>
+                
                 <div class="form-group">
                     <label for="eventTime">Hora *</label>
                     <input type="time" id="eventTime" required value="09:00">
                 </div>
+                
                 <div class="form-group">
                     <label for="eventTitle">Título del Evento *</label>
                     <input type="text" id="eventTitle" required placeholder="Reunión, Cita, etc.">
                 </div>
+                
+                <!-- NUEVO CAMPO: Descripción -->
+                <div class="form-group">
+                    <label for="eventDescription">Descripción</label>
+                    <textarea id="eventDescription" rows="3" placeholder="Descripción detallada del evento..."></textarea>
+                </div>
+                
                 <div class="form-group">
                     <label for="eventLocation">Lugar</label>
                     <input type="text" id="eventLocation" placeholder="Oficina, Sala de reuniones, etc.">
                 </div>
+                
                 <div class="form-group">
                     <label for="eventOrganizer">Organizador</label>
                     <input type="text" id="eventOrganizer" placeholder="Nombre del organizador">
                 </div>
+                
                 <div class="form-group">
                     <label for="eventGuests">Invitados</label>
-                    <textarea id="eventGuests" rows="3" placeholder="Email1, Email2, Email3..."></textarea>
+                    <textarea id="eventGuests" rows="2" placeholder="Email1, Email2, Email3..."></textarea>
                     <small>Separar con comas</small>
                 </div>
+                
+                <!-- NUEVO CAMPO: Color del evento -->
+                <div class="form-group">
+                    <label for="eventColor">Color del evento</label>
+                    <div class="color-picker">
+                        <input type="color" id="eventColor" value="#4facfe">
+                        <div class="color-presets">
+                            <span class="color-option" style="background-color: #4facfe;" data-color="#4facfe"></span>
+                            <span class="color-option" style="background-color: #00f2fe;" data-color="#00f2fe"></span>
+                            <span class="color-option" style="background-color: #43e97b;" data-color="#43e97b"></span>
+                            <span class="color-option" style="background-color: #fa709a;" data-color="#fa709a"></span>
+                            <span class="color-option" style="background-color: #ff9a9e;" data-color="#ff9a9e"></span>
+                            <span class="color-option" style="background-color: #f6d365;" data-color="#f6d365"></span>
+                            <span class="color-option" style="background-color: #a8edea;" data-color="#a8edea"></span>
+                            <span class="color-option" style="background-color: #fed6e3;" data-color="#fed6e3"></span>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeEventModal()">Cancelar</button>
                     <button type="submit" class="btn btn-primary">Guardar Evento</button>
