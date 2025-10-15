@@ -1,5 +1,5 @@
 // CONFIGURACIÓN - URL DE TU APLICACIÓN WEB DE GAS
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/TU_SCRIPT_ID_AQUI/exec';
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/1uuszItq9nuwssQR-OaWkTuqMeBsabj1ViDj7pHFCI8I/exec';
 
 // VARIABLES GLOBALES DEL ESTADO DE LA APLICACIÓN
 let currentDate = new Date();    // Fecha actual para navegación
