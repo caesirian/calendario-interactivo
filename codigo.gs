@@ -1,96 +1,123 @@
-// Configuración
-var SHEET_ID = 'basecalculo123';
-var SHEET_NAME = 'Calendario';
+// CONFIGURACIÓN PRINCIPAL
+var SHEET_ID = 'tu_sheet_id_aqui';  // ID de Google Sheets
+var SHEET_NAME = 'Eventos';
 
-function doGet() {
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setTitle('Calendario Interactivo');
+// PUNTO DE ENTRADA PARA PETICIONES GET
+function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({version: "1.0"}))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
-}
-
-// Obtener todos los días marcados
-function obtenerDiasMarcados() {
+// PUNTO DE ENTRADA PARA PETICIONES POST - CORAZÓN DE LA API
+function doPost(e) {
   try {
-    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+    var action = e.parameter.action;  // Determina qué acción ejecutar
     
-    // Crear hoja si no existe
-    if (!sheet) {
-      sheet = SpreadsheetApp.openById(SHEET_ID).insertSheet(SHEET_NAME);
-      sheet.getRange('A1:B1').setValues([['Fecha', 'Estado']]);
+    switch(action) {
+      case 'getEvents':    return getEvents();      // Obtener eventos
+      case 'saveEvent':    return saveEvent(e.parameter);  // Guardar evento
+      case 'deleteEvent':  return deleteEvent(e.parameter.id); // Eliminar evento
+      default: return errorResponse('Acción no válida');
     }
-    
+  } catch (error) {
+    return errorResponse(error.toString());
+  }
+}
+
+// OBTENER TODOS LOS EVENTOS DESDE GOOGLE SHEETS
+function getEvents() {
+  try {
+    var sheet = getSheet();
     var data = sheet.getDataRange().getValues();
-    var diasMarcados = {};
+    var events = [];
     
-    // Saltar encabezado
+    // Procesar filas (saltando encabezados)
     for (var i = 1; i < data.length; i++) {
       if (data[i][0]) {
-        diasMarcados[data[i][0]] = data[i][1] || 'marcado';
+        events.push({
+          id: i,  // ID basado en número de fila
+          date: data[i][0],      // Fecha
+          time: data[i][1],      // Hora
+          title: data[i][2],     // Título
+          location: data[i][3],  // Lugar
+          organizer: data[i][4], // Organizador
+          guests: data[i][5]     // Invitados
+        });
       }
     }
     
-    return diasMarcados;
+    return successResponse({events: events});
   } catch (error) {
-    Logger.log('Error obteniendo días: ' + error.toString());
-    return {};
+    return errorResponse(error.toString());
   }
 }
 
-// Guardar día marcado
-function guardarDia(fecha, estado) {
+// GUARDAR EVENTO (CREAR O ACTUALIZAR)
+function saveEvent(params) {
   try {
-    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
+    var sheet = getSheet();
+    var eventId = params.id;
     
-    // Crear hoja si no existe
-    if (!sheet) {
-      sheet = SpreadsheetApp.openById(SHEET_ID).insertSheet(SHEET_NAME);
-      sheet.getRange('A1:B1').setValues([['Fecha', 'Estado']]);
+    // Preparar datos del evento
+    var eventData = [
+      params.date,
+      params.time,
+      params.title,
+      params.location || '',
+      params.organizer || '',
+      params.guests || ''
+    ];
+    
+    if (eventId && eventId !== 'null') {
+      // ACTUALIZAR evento existente
+      sheet.getRange(parseInt(eventId) + 1, 1, 1, 6).setValues([eventData]);
+    } else {
+      // CREAR nuevo evento
+      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 6).setValues([eventData]);
     }
     
-    var data = sheet.getDataRange().getValues();
-    var fechaEncontrada = false;
-    
-    // Buscar si la fecha ya existe
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][0] === fecha) {
-        sheet.getRange(i + 1, 2).setValue(estado);
-        fechaEncontrada = true;
-        break;
-      }
-    }
-    
-    // Si no existe, agregar nueva fila
-    if (!fechaEncontrada) {
-      sheet.getRange(sheet.getLastRow() + 1, 1, 1, 2).setValues([[fecha, estado]]);
-    }
-    
-    return { success: true, message: 'Día guardado correctamente' };
+    return successResponse({message: 'Evento guardado'});
   } catch (error) {
-    return { success: false, message: 'Error: ' + error.toString() };
+    return errorResponse(error.toString());
   }
 }
 
-// Eliminar día marcado
-function eliminarDia(fecha) {
+// ELIMINAR EVENTO
+function deleteEvent(eventId) {
   try {
-    var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(SHEET_NAME);
-    var data = sheet.getDataRange().getValues();
-    
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][0] === fecha) {
-        sheet.deleteRow(i + 1);
-        break;
-      }
-    }
-    
-    return { success: true, message: 'Día eliminado' };
+    var sheet = getSheet();
+    sheet.deleteRow(parseInt(eventId) + 1);  // +1 por los encabezados
+    return successResponse({message: 'Evento eliminado'});
   } catch (error) {
-    return { success: false, message: 'Error: ' + error.toString() };
+    return errorResponse(error.toString());
   }
+}
+
+// OBTENER O CREAR HOJA DE CÁLCULO
+function getSheet() {
+  var spreadsheet = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = spreadsheet.getSheetByName(SHEET_NAME);
+  
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(SHEET_NAME);
+    // Crear encabezados
+    sheet.getRange('A1:F1').setValues([['Fecha', 'Hora', 'Título', 'Lugar', 'Organizador', 'Invitados']]);
+  }
+  
+  return sheet;
+}
+
+// FUNCIONES AUXILIARES PARA RESPUESTAS
+function successResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    ...data
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function errorResponse(message) {
+  return ContentService.createTextOutput(JSON.stringify({
+    success: false,
+    message: message
+  })).setMimeType(ContentService.MimeType.JSON);
 }
