@@ -1,5 +1,5 @@
 // script.js - CÓDIGO COMPLETO Y FUNCIONAL
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxFh-E5KVpZiOhHQWUaFM3yAe8xWp2LW_mh1uOkSxHXg75w-VjakDPnLKkS6EEbNjNX/exec';
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbz0JpCz3Qy2V0O201yPWj1BOaAOjb8-OqpoP4JkVTNxXXdSvD5cAl7eOQ98jTjEY0aZbQ/exec';
 // Variables globales
 let currentDate = new Date();
 let events = [];
