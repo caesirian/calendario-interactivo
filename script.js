@@ -1,5 +1,6 @@
 // script.js - VERSIÓN MEJORADA CON TODAS LAS FUNCIONALIDADES
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/TU_SCRIPT_ID/exec';
+// IMPORTANTE: Actualiza GAS_WEB_APP_URL con tu URL real de Google Apps Script
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
 
 let currentDate = new Date();
 let events = [];
