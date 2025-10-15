@@ -1,5 +1,5 @@
 // Configuración - URL de tu Google Apps Script
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/1uuszItq9nuwssQR-OaWkTuqMeBsabj1ViDj7pHFCI8I/exec';
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxFh-E5KVpZiOhHQWUaFM3yAe8xWp2LW_mh1uOkSxHXg75w-VjakDPnLKkS6EEbNjNX/exec';
 
 // Variables globales
 let currentDate = new Date();
