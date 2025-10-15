@@ -3,55 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendario de Eventos con GAS</title>
+    <title>Calendario de Eventos</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- ESTRUCTURA PRINCIPAL DE LA UI -->
     <div class="container">
         <div class="header">
             <h1>📅 Calendario de Eventos</h1>
-            <p>Conectado a Google Apps Script + Google Sheets</p>
-            <!-- INDICADOR DE ESTADO DE CONEXIÓN -->
+            <p>Gestiona tus eventos con Google Sheets</p>
             <div class="api-status" id="apiStatus">
                 <span class="status-dot"></span>
                 <span id="statusText">Conectando...</span>
             </div>
         </div>
         
-        <!-- CONTROLES DE NAVEGACIÓN -->
         <div class="controls">
             <div class="filter-controls">
-                <button class="btn" onclick="changeMonth(-1)">← Mes Anterior</button>
+                <button class="btn" onclick="changeMonth(-1)">← Anterior</button>
                 <h2 id="currentMonth"></h2>
-                <button class="btn" onclick="changeMonth(1)">Mes Siguiente →</button>
+                <button class="btn" onclick="changeMonth(1)">Siguiente →</button>
             </div>
-            <button class="btn btn-primary" onclick="showEventModal()">+ Nuevo Evento</button>
+            <button class="btn btn-primary" onclick="showEventModal()" id="newEventBtn">+ Nuevo Evento</button>
         </div>
         
-        <!-- CALENDARIO PRINCIPAL -->
-        <div class="calendar" id="calendar"></div>
+        <div class="loading" id="loading">Cargando calendario...</div>
         
-        <!-- LISTA DE EVENTOS DEL DÍA SELECCIONADO -->
+        <div class="calendar-container">
+            <div class="calendar" id="calendar"></div>
+        </div>
+        
         <div class="events-list" id="eventsList">
             <h3>Eventos del Día Seleccionado</h3>
-            <div id="dayEvents"></div>
+            <div id="dayEvents" class="day-events">
+                <p class="no-events">Selecciona una fecha para ver los eventos</p>
+            </div>
         </div>
     </div>
 
-    <!-- MODAL PARA GESTIONAR EVENTOS -->
+    <!-- Modal para eventos -->
     <div id="eventModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeEventModal()">&times;</span>
             <h3 id="modalTitle">Nuevo Evento</h3>
             <form id="eventForm">
                 <input type="hidden" id="editId">
-                <!-- FORMULARIO CON TODOS LOS CAMPOS DEL EVENTO -->
                 <div class="form-group">
-                    <label for="eventDate">Fecha:</label>
+                    <label for="eventDate">Fecha *</label>
                     <input type="date" id="eventDate" required>
                 </div>
-                <!-- ... más campos del formulario ... -->
+                <div class="form-group">
+                    <label for="eventTime">Hora *</label>
+                    <input type="time" id="eventTime" required value="09:00">
+                </div>
+                <div class="form-group">
+                    <label for="eventTitle">Título del Evento *</label>
+                    <input type="text" id="eventTitle" required placeholder="Reunión, Cita, etc.">
+                </div>
+                <div class="form-group">
+                    <label for="eventLocation">Lugar</label>
+                    <input type="text" id="eventLocation" placeholder="Oficina, Sala de reuniones, etc.">
+                </div>
+                <div class="form-group">
+                    <label for="eventOrganizer">Organizador</label>
+                    <input type="text" id="eventOrganizer" placeholder="Nombre del organizador">
+                </div>
+                <div class="form-group">
+                    <label for="eventGuests">Invitados</label>
+                    <textarea id="eventGuests" rows="3" placeholder="Email1, Email2, Email3..."></textarea>
+                    <small>Separar con comas</small>
+                </div>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeEventModal()">Cancelar</button>
                     <button type="submit" class="btn btn-primary">Guardar Evento</button>
@@ -60,6 +80,9 @@
             </form>
         </div>
     </div>
+
+    <!-- Notificaciones -->
+    <div id="notification" class="notification"></div>
 
     <script src="script.js"></script>
 </body>
