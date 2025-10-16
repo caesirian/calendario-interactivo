@@ -2,118 +2,215 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calendario de Eventos Mejorado</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Calendario Moderno | Gestor de Eventos</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>📅 Calendario de Eventos</h1>
-            <p>Gestiona tus eventos con colores y descripciones</p>
-            <div class="api-status" id="apiStatus">
-                <span class="status-dot"></span>
-                <span id="statusText">Conectando...</span>
-            </div>
-        </div>
-        
-        <div class="controls">
-            <div class="filter-controls">
-                <button class="btn" onclick="changeMonth(-1)">← Anterior</button>
-                <h2 id="currentMonth"></h2>
-                <button class="btn" onclick="changeMonth(1)">Siguiente →</button>
-            </div>
-            <button class="btn btn-primary" onclick="showEventModal()" id="newEventBtn">+ Nuevo Evento</button>
-        </div>
-        
-        <div class="loading" id="loading">Cargando calendario...</div>
-        
-        <div class="calendar-container">
-            <div class="calendar" id="calendar"></div>
-        </div>
-        
-        <div class="events-list" id="eventsList" style="display: none;">
-            <h3>Eventos del Día Seleccionado</h3>
-            <div id="dayEvents" class="day-events">
-                <p class="no-events">Selecciona una fecha para ver los eventos</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal para eventos MEJORADO -->
-    <div id="eventModal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeEventModal()">&times;</span>
-            <h3 id="modalTitle">Nuevo Evento</h3>
-            <form id="eventForm">
-                <input type="hidden" id="editId">
-                
-                <div class="form-group">
-                    <label for="eventDate">Fecha *</label>
-                    <input type="date" id="eventDate" required>
+    <div class="app-container">
+        <!-- Header Moderno -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-calendar-alt"></i>
+                    <div class="logo-text">
+                        <h1>Calendario</h1>
+                        <span>Organiza tu tiempo</span>
+                    </div>
                 </div>
-                
-                <div class="form-group">
-                    <label for="eventTime">Hora *</label>
-                    <input type="time" id="eventTime" required value="09:00">
-                </div>
-                
-                <div class="form-group">
-                    <label for="eventTitle">Título del Evento *</label>
-                    <input type="text" id="eventTitle" required placeholder="Reunión, Cita, etc.">
-                </div>
-                
-                <!-- NUEVO CAMPO: Descripción -->
-                <div class="form-group">
-                    <label for="eventDescription">Descripción</label>
-                    <textarea id="eventDescription" rows="3" placeholder="Descripción detallada del evento..."></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label for="eventLocation">Lugar</label>
-                    <input type="text" id="eventLocation" placeholder="Oficina, Sala de reuniones, etc.">
-                </div>
-                
-                <div class="form-group">
-                    <label for="eventOrganizer">Organizador</label>
-                    <input type="text" id="eventOrganizer" placeholder="Nombre del organizador">
-                </div>
-                
-                <div class="form-group">
-                    <label for="eventGuests">Invitados</label>
-                    <textarea id="eventGuests" rows="2" placeholder="Email1, Email2, Email3..."></textarea>
-                    <small>Separar con comas</small>
-                </div>
-                
-                <!-- NUEVO CAMPO: Color del evento -->
-                <div class="form-group">
-                    <label for="eventColor">Color del evento</label>
-                    <div class="color-picker">
-                        <input type="color" id="eventColor" value="#4facfe">
-                        <div class="color-presets">
-                            <span class="color-option" style="background-color: #4facfe;" data-color="#4facfe"></span>
-                            <span class="color-option" style="background-color: #00f2fe;" data-color="#00f2fe"></span>
-                            <span class="color-option" style="background-color: #43e97b;" data-color="#43e97b"></span>
-                            <span class="color-option" style="background-color: #fa709a;" data-color="#fa709a"></span>
-                            <span class="color-option" style="background-color: #ff9a9e;" data-color="#ff9a9e"></span>
-                            <span class="color-option" style="background-color: #f6d365;" data-color="#f6d365"></span>
-                            <span class="color-option" style="background-color: #a8edea;" data-color="#a8edea"></span>
-                            <span class="color-option" style="background-color: #fed6e3;" data-color="#fed6e3"></span>
+                <div class="header-actions">
+                    <div class="connection-status" id="apiStatus">
+                        <div class="status-indicator">
+                            <span class="status-dot"></span>
+                            <span id="statusText">Conectando...</span>
                         </div>
                     </div>
                 </div>
-                
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeEventModal()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Evento</button>
-                    <button type="button" class="btn btn-danger" id="deleteBtn" style="display:none;" onclick="deleteEvent()">Eliminar Evento</button>
+            </div>
+        </header>
+
+        <!-- Contenido Principal -->
+        <main class="app-main">
+            <!-- Panel de Control -->
+            <section class="control-panel">
+                <div class="month-navigation">
+                    <button class="nav-btn" onclick="changeMonth(-1)">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <h2 class="current-month" id="currentMonth"></h2>
+                    <button class="nav-btn" onclick="changeMonth(1)">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
                 </div>
-            </form>
+                <button class="add-event-btn" onclick="showEventModal()">
+                    <i class="fas fa-plus"></i>
+                    <span>Nuevo Evento</span>
+                </button>
+            </section>
+
+            <!-- Indicador de Carga -->
+            <div class="loading-state" id="loading">
+                <div class="loading-spinner"></div>
+                <p>Cargando calendario...</p>
+            </div>
+
+            <!-- Calendario -->
+            <section class="calendar-section">
+                <div class="calendar-header">
+                    <div class="week-days">
+                        <span>Dom</span>
+                        <span>Lun</span>
+                        <span>Mar</span>
+                        <span>Mié</span>
+                        <span>Jue</span>
+                        <span>Vie</span>
+                        <span>Sáb</span>
+                    </div>
+                </div>
+                <div class="calendar-grid" id="calendar"></div>
+            </section>
+
+            <!-- Panel de Eventos -->
+            <aside class="events-sidebar" id="eventsList" style="display: none;">
+                <div class="sidebar-header">
+                    <h3>Eventos del Día</h3>
+                    <button class="close-sidebar" onclick="hideEventsList()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="events-container" id="dayEvents">
+                    <div class="empty-state">
+                        <i class="fas fa-calendar-day"></i>
+                        <p>Selecciona una fecha para ver los eventos</p>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Modal Moderno -->
+    <div id="eventModal" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fas fa-calendar-plus"></i>
+                    <h3 id="modalTitle">Nuevo Evento</h3>
+                </div>
+                <button class="modal-close" onclick="closeEventModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <form id="eventForm" class="event-form">
+                    <input type="hidden" id="editId">
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="eventDate" class="form-label">
+                                <i class="fas fa-calendar"></i>
+                                Fecha *
+                            </label>
+                            <input type="date" id="eventDate" class="form-input" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="eventTime" class="form-label">
+                                <i class="fas fa-clock"></i>
+                                Hora *
+                            </label>
+                            <input type="time" id="eventTime" class="form-input" required value="09:00">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="eventTitle" class="form-label">
+                                <i class="fas fa-heading"></i>
+                                Título del Evento *
+                            </label>
+                            <input type="text" id="eventTitle" class="form-input" required placeholder="¿Qué planeas hacer?">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="eventDescription" class="form-label">
+                                <i class="fas fa-align-left"></i>
+                                Descripción
+                            </label>
+                            <textarea id="eventDescription" class="form-textarea" rows="3" placeholder="Detalles adicionales del evento..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="eventLocation" class="form-label">
+                                <i class="fas fa-map-marker-alt"></i>
+                                Lugar
+                            </label>
+                            <input type="text" id="eventLocation" class="form-input" placeholder="¿Dónde será?">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="eventOrganizer" class="form-label">
+                                <i class="fas fa-user"></i>
+                                Organizador
+                            </label>
+                            <input type="text" id="eventOrganizer" class="form-input" placeholder="Tu nombre">
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label for="eventGuests" class="form-label">
+                                <i class="fas fa-users"></i>
+                                Invitados
+                            </label>
+                            <textarea id="eventGuests" class="form-textarea" rows="2" placeholder="email1@ejemplo.com, email2@ejemplo.com"></textarea>
+                            <small class="form-hint">Separa con comas</small>
+                        </div>
+
+                        <div class="form-group full-width">
+                            <label class="form-label">
+                                <i class="fas fa-palette"></i>
+                                Color del Evento
+                            </label>
+                            <div class="color-picker-modern">
+                                <input type="color" id="eventColor" value="#4facfe" class="color-input">
+                                <div class="color-presets-grid">
+                                    <div class="color-preset" style="background: #4facfe;" data-color="#4facfe" data-name="Azul"></div>
+                                    <div class="color-preset" style="background: #00f2fe;" data-color="#00f2fe" data-name="Celeste"></div>
+                                    <div class="color-preset" style="background: #43e97b;" data-color="#43e97b" data-name="Verde"></div>
+                                    <div class="color-preset" style="background: #fa709a;" data-color="#fa709a" data-name="Rosa"></div>
+                                    <div class="color-preset" style="background: #ff9a9e;" data-color="#ff9a9e" data-name="Coral"></div>
+                                    <div class="color-preset" style="background: #f6d365;" data-color="#f6d365" data-name="Amarillo"></div>
+                                    <div class="color-preset" style="background: #a8edea;" data-color="#a8edea" data-name="Menta"></div>
+                                    <div class="color-preset" style="background: #fed6e3;" data-color="#fed6e3" data-name="Lavanda"></div>
+                                </div>
+                                <div class="color-selected">
+                                    <span id="selectedColorName">Azul</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeEventModal()">
+                    <i class="fas fa-times"></i>
+                    Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary" onclick="saveEventFromForm()">
+                    <i class="fas fa-save"></i>
+                    Guardar Evento
+                </button>
+                <button type="button" class="btn btn-danger" id="deleteBtn" style="display:none;" onclick="deleteEvent()">
+                    <i class="fas fa-trash"></i>
+                    Eliminar
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- Notificaciones -->
-    <div id="notification" class="notification"></div>
+    <!-- Sistema de Notificaciones Moderno -->
+    <div class="notification-system">
+        <div id="notification" class="notification-toast"></div>
+    </div>
 
     <script src="script.js"></script>
 </body>
