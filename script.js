@@ -2,9 +2,14 @@
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
 
 let currentDate = new Date();
-let events = [];
+let eventsCache = new Map(); // Nuevo cache por rangos de fecha
 let selectedDate = null;
 let isModalOpen = false;
+let currentRange = null;
+
+// AGREGAR estas constantes al inicio del archivo
+const LAZY_LOAD_RANGE = 45; // Días a cargar alrededor del mes visible (45 = ~1.5 meses)
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos en milisegundos
 
 // INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', function() {
@@ -114,31 +119,63 @@ async function checkConnection() {
     }
 }
 
-// CARGAR EVENTOS DESDE GAS
-async function loadEvents() {
+async function loadEventsLazy(targetDate = null) {
+    const dateToLoad = targetDate || currentDate;
+    const range = calculateLoadRange(dateToLoad);
+    
+    // Verificar si ya tenemos este rango en cache
+    const cacheKey = `${range.start}-${range.end}`;
+    const cached = eventsCache.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+        console.log('📦 Usando eventos en cache:', cacheKey);
+        mergeEventsIntoCache(cached.events);
+        renderCalendar();
+        return;
+    }
+    
     try {
         showLoading(true);
-        const response = await fetch(GAS_WEB_APP_URL + '?action=getEvents');
+        
+        const params = new URLSearchParams({
+            action: 'getEventsByRange',
+            startDate: range.start,
+            endDate: range.end
+        });
+        
+        const response = await fetch(GAS_WEB_APP_URL + '?' + params.toString());
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
         const result = await response.json();
         
         if (result.success) {
-            events = result.events || [];
+            // Guardar en cache
+            eventsCache.set(cacheKey, {
+                events: result.events,
+                timestamp: Date.now()
+            });
+            
+            mergeEventsIntoCache(result.events);
+            currentRange = range;
             renderCalendar();
-            hideEventsList();
-            showNotification('✅ Eventos cargados correctamente', 'success');
+            
+            console.log('✅ Eventos cargados (Lazy Loading):', result.events.length, 'eventos');
         } else {
             throw new Error(result.message);
         }
     } catch (error) {
-        console.error('Error cargando eventos:', error);
-        showNotification('❌ Error: ' + error.message, 'error');
+        console.error('Error en lazy loading:', error);
+        showNotification('❌ Error cargando eventos: ' + error.message, 'error');
+        loadSampleData(); // Fallback a datos de ejemplo
     } finally {
         showLoading(false);
     }
 }
+
+function calculateLoadRange(centerDate) {
+    const start = new Date(centerDate);
+    const end = new Date(centerDate);
 
 // GUARDAR EVENTO MEJORADO
 async function saveEventFromForm() {
@@ -188,7 +225,36 @@ async function saveEventFromForm() {
         showLoading(false);
     }
 }
+start.setDate(start.getDate() - LAZY_LOAD_RANGE);
+    end.setDate(end.getDate() + LAZY_LOAD_RANGE);
+    
+    return {
+        start: start.toISOString().split('T')[0],
+        end: end.toISOString().split('T')[0]
+    };
+}
 
+// AGREGAR función para mezclar eventos en cache global
+function mergeEventsIntoCache(newEvents) {
+    // Para simplicidad, reemplazamos todos los eventos con los nuevos
+    // En una implementación más avanzada, podrías mergear inteligentemente
+    window.events = newEvents;
+}
+
+// AGREGAR función para precargar meses adyacentes
+function preloadAdjacentMonths() {
+    const nextMonth = new Date(currentDate);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    
+    const prevMonth = new Date(currentDate);
+    prevMonth.setMonth(prevMonth.getMonth() - 1);
+    
+    // Precargar en segundo plano sin bloquear la UI
+    setTimeout(() => {
+        loadEventsLazy(nextMonth).catch(console.error);
+        loadEventsLazy(prevMonth).catch(console.error);
+    }, 1000);
+}
 // ELIMINAR EVENTO
 async function deleteEvent() {
     const eventId = document.getElementById('editId').value;
