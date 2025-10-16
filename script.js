@@ -1,5 +1,5 @@
 // script.js - ADAPTADO AL DISEÑO MODERNO
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/TU_SCRIPT_ID/exec';
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
 
 let currentDate = new Date();
 let events = [];
