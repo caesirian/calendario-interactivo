@@ -1,15 +1,17 @@
-// script.js - ADAPTADO AL DISEÑO MODERNO
+// script.js - VERSIÓN COMPLETA CON LAZY LOADING
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
 
+// Variables globales
 let currentDate = new Date();
-let eventsCache = new Map(); // Nuevo cache por rangos de fecha
+let events = [];
 let selectedDate = null;
 let isModalOpen = false;
-let currentRange = null;
 
-// AGREGAR estas constantes al inicio del archivo
-const LAZY_LOAD_RANGE = 45; // Días a cargar alrededor del mes visible (45 = ~1.5 meses)
+// Variables para Lazy Loading
+let eventsCache = new Map();
+const LAZY_LOAD_RANGE = 45; // Días a cargar alrededor del mes visible
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutos en milisegundos
+let currentRange = null;
 
 // INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', function() {
@@ -20,9 +22,8 @@ document.addEventListener('DOMContentLoaded', function() {
     checkConnection();
 });
 
-// CONFIGURAR EVENT LISTENERS MEJORADO
+// CONFIGURAR EVENT LISTENERS
 function setupEventListeners() {
-    // Prevenir envío duplicado del formulario
     const eventForm = document.getElementById('eventForm');
     if (eventForm) {
         eventForm.addEventListener('submit', function(e) {
@@ -30,7 +31,6 @@ function setupEventListeners() {
         });
     }
 
-    // Cerrar modal con ESC
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && isModalOpen) {
             closeEventModal();
@@ -53,14 +53,11 @@ function setupColorPickerModern() {
             colorInput.value = color;
             colorName.textContent = name;
             
-            // Remover clase active de todos
             colorPresets.forEach(opt => opt.classList.remove('active'));
-            // Agregar clase active al seleccionado
             this.classList.add('active');
         });
     });
 
-    // Actualizar cuando cambia el input de color
     colorInput.addEventListener('input', function() {
         const hexColor = this.value;
         const preset = Array.from(colorPresets).find(p => p.getAttribute('data-color') === hexColor);
@@ -105,7 +102,8 @@ async function checkConnection() {
         if (result.success) {
             updateStatus('Conectado', 'success');
             showNotification('✅ Conexión exitosa con Google Sheets', 'success');
-            await loadEvents();
+            await loadEventsLazy(); // ← USANDO LAZY LOADING
+            preloadAdjacentMonths(); // ← Precargar en segundo plano
         } else {
             throw new Error(result.message);
         }
@@ -119,6 +117,7 @@ async function checkConnection() {
     }
 }
 
+// LAZY LOADING - FUNCIÓN PRINCIPAL
 async function loadEventsLazy(targetDate = null) {
     const dateToLoad = targetDate || currentDate;
     const range = calculateLoadRange(dateToLoad);
@@ -167,17 +166,76 @@ async function loadEventsLazy(targetDate = null) {
     } catch (error) {
         console.error('Error en lazy loading:', error);
         showNotification('❌ Error cargando eventos: ' + error.message, 'error');
-        loadSampleData(); // Fallback a datos de ejemplo
+        // Fallback: intentar carga normal
+        await loadEventsNormal();
     } finally {
         showLoading(false);
     }
 }
 
+// CALCULAR RANGO PARA LAZY LOADING
 function calculateLoadRange(centerDate) {
     const start = new Date(centerDate);
     const end = new Date(centerDate);
+    
+    // Cargar LAZY_LOAD_RANGE días alrededor de la fecha central
+    start.setDate(start.getDate() - LAZY_LOAD_RANGE);
+    end.setDate(end.getDate() + LAZY_LOAD_RANGE);
+    
+    return {
+        start: start.toISOString().split('T')[0],
+        end: end.toISOString().split('T')[0]
+    };
+}
 
-// GUARDAR EVENTO MEJORADO
+// MEZCLAR EVENTOS EN CACHE
+function mergeEventsIntoCache(newEvents) {
+    window.events = newEvents;
+}
+
+// PRECARGAR MESES ADYACENTES
+function preloadAdjacentMonths() {
+    const nextMonth = new Date(currentDate);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    
+    const prevMonth = new Date(currentDate);
+    prevMonth.setMonth(prevMonth.getMonth() - 1);
+    
+    // Precargar en segundo plano sin bloquear la UI
+    setTimeout(() => {
+        loadEventsLazy(nextMonth).catch(console.error);
+        loadEventsLazy(prevMonth).catch(console.error);
+    }, 1000);
+}
+
+// CARGA NORMAL (fallback)
+async function loadEventsNormal() {
+    try {
+        showLoading(true);
+        const response = await fetch(GAS_WEB_APP_URL + '?action=getEvents');
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            events = result.events || [];
+            renderCalendar();
+            hideEventsList();
+            showNotification('✅ Eventos cargados correctamente', 'success');
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        console.error('Error cargando eventos:', error);
+        showNotification('❌ Error: ' + error.message, 'error');
+        loadSampleData();
+    } finally {
+        showLoading(false);
+    }
+}
+
+// GUARDAR EVENTO
 async function saveEventFromForm() {
     const eventData = {
         id: document.getElementById('editId').value,
@@ -212,9 +270,12 @@ async function saveEventFromForm() {
         const result = await response.json();
         
         if (result.success) {
+            // Limpiar cache porque los eventos cambiaron
+            clearEventsCache();
+            
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
-            await loadEvents();
+            await loadEventsLazy();
         } else {
             throw new Error(result.message);
         }
@@ -225,36 +286,7 @@ async function saveEventFromForm() {
         showLoading(false);
     }
 }
-start.setDate(start.getDate() - LAZY_LOAD_RANGE);
-    end.setDate(end.getDate() + LAZY_LOAD_RANGE);
-    
-    return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0]
-    };
-}
 
-// AGREGAR función para mezclar eventos en cache global
-function mergeEventsIntoCache(newEvents) {
-    // Para simplicidad, reemplazamos todos los eventos con los nuevos
-    // En una implementación más avanzada, podrías mergear inteligentemente
-    window.events = newEvents;
-}
-
-// AGREGAR función para precargar meses adyacentes
-function preloadAdjacentMonths() {
-    const nextMonth = new Date(currentDate);
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    
-    const prevMonth = new Date(currentDate);
-    prevMonth.setMonth(prevMonth.getMonth() - 1);
-    
-    // Precargar en segundo plano sin bloquear la UI
-    setTimeout(() => {
-        loadEventsLazy(nextMonth).catch(console.error);
-        loadEventsLazy(prevMonth).catch(console.error);
-    }, 1000);
-}
 // ELIMINAR EVENTO
 async function deleteEvent() {
     const eventId = document.getElementById('editId').value;
@@ -272,9 +304,12 @@ async function deleteEvent() {
         const result = await response.json();
         
         if (result.success) {
+            // Limpiar cache porque los eventos cambiaron
+            clearEventsCache();
+            
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
-            await loadEvents();
+            await loadEventsLazy();
         } else {
             throw new Error(result.message);
         }
@@ -286,7 +321,7 @@ async function deleteEvent() {
     }
 }
 
-// RENDERIZAR CALENDARIO MODERNO
+// RENDERIZAR CALENDARIO
 function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
@@ -376,7 +411,7 @@ function getEventsForDate(date) {
                  .sort((a, b) => a.time.localeCompare(b.time));
 }
 
-// SELECCIONAR FECHA - MEJORADO
+// SELECCIONAR FECHA
 function selectDate(date, dayElement) {
     selectedDate = date;
     
@@ -393,7 +428,7 @@ function selectDate(date, dayElement) {
     showEventsList();
 }
 
-// MOSTRAR EVENTOS DEL DÍA - DISEÑO MODERNO
+// MOSTRAR EVENTOS DEL DÍA
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -442,7 +477,7 @@ function hideEventsList() {
     }
 }
 
-// MODAL DE EVENTOS - DISEÑO MODERNO
+// MODAL DE EVENTOS
 function showEventModal(event = null) {
     if (!selectedDate && !event) {
         showNotification('Por favor, selecciona una fecha primero', 'error');
@@ -525,12 +560,15 @@ function editEvent(index) {
     showEventModal(event);
 }
 
-// CAMBIAR MES - MEJORADO
+// CAMBIAR MES
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
-    renderCalendar();
+    loadEventsLazy();
     hideEventsList();
     selectedDate = null;
+    
+    // Precargar meses adyacentes en segundo plano
+    preloadAdjacentMonths();
     
     showNotification(`📅 Cambiado a ${currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`, 'success');
 }
@@ -568,6 +606,12 @@ function showLoading(show) {
             loading.classList.remove('show');
         }
     }
+}
+
+// LIMPIAR CACHE
+function clearEventsCache() {
+    eventsCache.clear();
+    console.log('🗑️ Cache de eventos limpiado');
 }
 
 // DATOS DE EJEMPLO
@@ -609,3 +653,4 @@ window.editEvent = editEvent;
 window.showEventModal = showEventModal;
 window.saveEventFromForm = saveEventFromForm;
 window.hideEventsList = hideEventsList;
+window.clearEventsCache = clearEventsCache;
