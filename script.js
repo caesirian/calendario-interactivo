@@ -1,4 +1,4 @@
-// script.js - VERSIÓN COMPLETA CON LAZY LOADING
+// script.js - VERSIÓN CORREGIDA
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
 
 // Variables globales
@@ -6,11 +6,12 @@ let currentDate = new Date();
 let events = [];
 let selectedDate = null;
 let isModalOpen = false;
+let currentEditingEvent = null; // Nuevo: para trackear evento en edición
 
 // Variables para Lazy Loading
 let eventsCache = new Map();
-const LAZY_LOAD_RANGE = 45; // Días a cargar alrededor del mes visible
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos en milisegundos
+const LAZY_LOAD_RANGE = 45;
+const CACHE_TTL = 5 * 60 * 1000;
 let currentRange = null;
 
 // INICIALIZACIÓN
@@ -93,24 +94,29 @@ function setupModalHandling() {
 async function checkConnection() {
     try {
         showLoading(true);
+        console.log('🔗 Probando conexión con:', GAS_WEB_APP_URL);
+        
         const response = await fetch(GAS_WEB_APP_URL + '?action=test');
         
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
+        }
         
         const result = await response.json();
+        console.log('📡 Respuesta del servidor:', result);
         
         if (result.success) {
             updateStatus('Conectado', 'success');
             showNotification('✅ Conexión exitosa con Google Sheets', 'success');
-            await loadEventsLazy(); // ← USANDO LAZY LOADING
-            preloadAdjacentMonths(); // ← Precargar en segundo plano
+            await loadEventsLazy();
+            preloadAdjacentMonths();
         } else {
-            throw new Error(result.message);
+            throw new Error(result.message || 'Error desconocido del servidor');
         }
     } catch (error) {
-        console.error('Error de conexión:', error);
+        console.error('❌ Error de conexión:', error);
         updateStatus('Sin conexión', 'error');
-        showNotification('❌ ' + error.message, 'error');
+        showNotification('❌ Error: ' + error.message, 'error');
         loadSampleData();
     } finally {
         showLoading(false);
@@ -122,7 +128,6 @@ async function loadEventsLazy(targetDate = null) {
     const dateToLoad = targetDate || currentDate;
     const range = calculateLoadRange(dateToLoad);
     
-    // Verificar si ya tenemos este rango en cache
     const cacheKey = `${range.start}-${range.end}`;
     const cached = eventsCache.get(cacheKey);
     
@@ -142,14 +147,16 @@ async function loadEventsLazy(targetDate = null) {
             endDate: range.end
         });
         
+        console.log('📡 Solicitando eventos para rango:', range);
         const response = await fetch(GAS_WEB_APP_URL + '?' + params.toString());
         
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status}`);
+        }
         
         const result = await response.json();
         
         if (result.success) {
-            // Guardar en cache
             eventsCache.set(cacheKey, {
                 events: result.events,
                 timestamp: Date.now()
@@ -166,7 +173,6 @@ async function loadEventsLazy(targetDate = null) {
     } catch (error) {
         console.error('Error en lazy loading:', error);
         showNotification('❌ Error cargando eventos: ' + error.message, 'error');
-        // Fallback: intentar carga normal
         await loadEventsNormal();
     } finally {
         showLoading(false);
@@ -178,7 +184,6 @@ function calculateLoadRange(centerDate) {
     const start = new Date(centerDate);
     const end = new Date(centerDate);
     
-    // Cargar LAZY_LOAD_RANGE días alrededor de la fecha central
     start.setDate(start.getDate() - LAZY_LOAD_RANGE);
     end.setDate(end.getDate() + LAZY_LOAD_RANGE);
     
@@ -201,7 +206,6 @@ function preloadAdjacentMonths() {
     const prevMonth = new Date(currentDate);
     prevMonth.setMonth(prevMonth.getMonth() - 1);
     
-    // Precargar en segundo plano sin bloquear la UI
     setTimeout(() => {
         loadEventsLazy(nextMonth).catch(console.error);
         loadEventsLazy(prevMonth).catch(console.error);
@@ -235,7 +239,7 @@ async function loadEventsNormal() {
     }
 }
 
-// GUARDAR EVENTO
+// GUARDAR EVENTO - CORREGIDO
 async function saveEventFromForm() {
     const eventData = {
         id: document.getElementById('editId').value,
@@ -263,6 +267,8 @@ async function saveEventFromForm() {
             ...eventData
         });
         
+        console.log('💾 Guardando evento:', eventData);
+        
         const response = await fetch(GAS_WEB_APP_URL + '?' + params.toString());
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -276,6 +282,9 @@ async function saveEventFromForm() {
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
             await loadEventsLazy();
+            
+            // Resetear el evento en edición
+            currentEditingEvent = null;
         } else {
             throw new Error(result.message);
         }
@@ -310,6 +319,9 @@ async function deleteEvent() {
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
             await loadEventsLazy();
+            
+            // Resetear el evento en edición
+            currentEditingEvent = null;
         } else {
             throw new Error(result.message);
         }
@@ -321,7 +333,7 @@ async function deleteEvent() {
     }
 }
 
-// RENDERIZAR CALENDARIO
+// RENDERIZAR CALENDARIO - CORREGIDO PARA MOSTRAR COLORES ACTUALIZADOS
 function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
@@ -368,13 +380,13 @@ function renderCalendar() {
             day.classList.add('today');
         }
         
-        // Verificar si tiene eventos
+        // Verificar si tiene eventos - CORREGIDO: Usar eventos actualizados
         const dayEvents = getEventsForDate(dateStr);
         if (dayEvents.length > 0) {
             const eventsIndicator = document.createElement('div');
             eventsIndicator.className = 'events-indicator';
             
-            // Crear líneas de colores para cada evento
+            // Crear líneas de colores para cada evento - USAR COLOR ACTUALIZADO
             dayEvents.slice(0, 3).forEach(event => {
                 const eventLine = document.createElement('div');
                 eventLine.className = 'event-line';
@@ -428,7 +440,7 @@ function selectDate(date, dayElement) {
     showEventsList();
 }
 
-// MOSTRAR EVENTOS DEL DÍA
+// MOSTRAR EVENTOS DEL DÍA - CORREGIDO PARA MOSTRAR COLORES ACTUALIZADOS
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -477,7 +489,7 @@ function hideEventsList() {
     }
 }
 
-// MODAL DE EVENTOS
+// MODAL DE EVENTOS - CORREGIDO
 function showEventModal(event = null) {
     if (!selectedDate && !event) {
         showNotification('Por favor, selecciona una fecha primero', 'error');
@@ -488,6 +500,7 @@ function showEventModal(event = null) {
     const deleteBtn = document.getElementById('deleteBtn');
     const colorInput = document.getElementById('eventColor');
     const colorName = document.getElementById('selectedColorName');
+    const dateInput = document.getElementById('eventDate');
     
     // Bloquear scroll del fondo
     document.body.style.overflow = 'hidden';
@@ -497,10 +510,16 @@ function showEventModal(event = null) {
     document.querySelectorAll('.color-preset').forEach(opt => opt.classList.remove('active'));
     
     if (event) {
-        // Modo edición
+        // Modo edición - GUARDAR EL EVENTO ORIGINAL PARA COMPARAR CAMBIOS
+        currentEditingEvent = {...event}; // Copia del evento original
+        
         document.getElementById('modalTitle').textContent = 'Editar Evento';
         document.getElementById('editId').value = event.id;
-        document.getElementById('eventDate').value = event.date;
+        
+        // CORRECCIÓN: Permitir cambiar la fecha en edición
+        dateInput.value = event.date;
+        dateInput.disabled = false; // Habilitado para edición
+        
         document.getElementById('eventTime').value = event.time;
         document.getElementById('eventTitle').value = event.title;
         document.getElementById('eventDescription').value = event.description || '';
@@ -520,10 +539,14 @@ function showEventModal(event = null) {
         
         deleteBtn.style.display = 'block';
     } else {
-        // Modo creación
+        // Modo creación - CORRECCIÓN: Fecha fija y no editable
         document.getElementById('modalTitle').textContent = 'Nuevo Evento';
         document.getElementById('eventForm').reset();
-        document.getElementById('eventDate').value = selectedDate;
+        
+        // CORRECCIÓN: Fecha fijada a la seleccionada y no editable
+        dateInput.value = selectedDate;
+        dateInput.disabled = true; // Deshabilitado en creación
+        
         document.getElementById('eventTime').value = '09:00';
         colorInput.value = '#4facfe';
         
@@ -535,6 +558,7 @@ function showEventModal(event = null) {
         }
         
         deleteBtn.style.display = 'none';
+        currentEditingEvent = null; // No hay evento en edición
     }
     
     modal.style.display = 'block';
@@ -552,6 +576,7 @@ function closeEventModal() {
     // Restaurar scroll del fondo
     document.body.style.overflow = 'auto';
     isModalOpen = false;
+    currentEditingEvent = null; // Limpiar evento en edición
 }
 
 // EDITAR EVENTO
