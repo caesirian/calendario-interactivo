@@ -1,52 +1,89 @@
-// script.js - VERSIÓN MEJORADA CON TODAS LAS FUNCIONALIDADES
-// IMPORTANTE: Actualiza GAS_WEB_APP_URL con tu URL real de Google Apps Script
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
+// script.js - ADAPTADO AL DISEÑO MODERNO
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/TU_SCRIPT_ID/exec';
 
 let currentDate = new Date();
 let events = [];
 let selectedDate = null;
+let isModalOpen = false;
 
 // INICIALIZACIÓN
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Iniciando aplicación mejorada...');
+    console.log('🎨 Iniciando calendario moderno...');
     setupEventListeners();
-    setupColorPicker();
+    setupColorPickerModern();
+    setupModalHandling();
     checkConnection();
 });
 
-// CONFIGURAR EVENT LISTENERS
+// CONFIGURAR EVENT LISTENERS MEJORADO
 function setupEventListeners() {
+    // Prevenir envío duplicado del formulario
     const eventForm = document.getElementById('eventForm');
     if (eventForm) {
-        eventForm.addEventListener('submit', async function(e) {
+        eventForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            await saveEventFromForm();
         });
     }
 
-    window.addEventListener('click', function(e) {
-        const modal = document.getElementById('eventModal');
-        if (e.target === modal) {
+    // Cerrar modal con ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && isModalOpen) {
             closeEventModal();
         }
     });
 }
 
-// CONFIGURAR SELECTOR DE COLOR
-function setupColorPicker() {
-    const colorOptions = document.querySelectorAll('.color-option');
+// CONFIGURAR SELECTOR DE COLOR MODERNO
+function setupColorPickerModern() {
+    const colorPresets = document.querySelectorAll('.color-preset');
     const colorInput = document.getElementById('eventColor');
+    const colorName = document.getElementById('selectedColorName');
     
-    colorOptions.forEach(option => {
-        option.addEventListener('click', function() {
+    colorPresets.forEach(preset => {
+        preset.addEventListener('click', function(e) {
+            e.stopPropagation();
             const color = this.getAttribute('data-color');
+            const name = this.getAttribute('data-name');
+            
             colorInput.value = color;
+            colorName.textContent = name;
             
             // Remover clase active de todos
-            colorOptions.forEach(opt => opt.classList.remove('active'));
+            colorPresets.forEach(opt => opt.classList.remove('active'));
             // Agregar clase active al seleccionado
             this.classList.add('active');
         });
+    });
+
+    // Actualizar cuando cambia el input de color
+    colorInput.addEventListener('input', function() {
+        const hexColor = this.value;
+        const preset = Array.from(colorPresets).find(p => p.getAttribute('data-color') === hexColor);
+        
+        if (preset) {
+            colorPresets.forEach(opt => opt.classList.remove('active'));
+            preset.classList.add('active');
+            colorName.textContent = preset.getAttribute('data-name');
+        } else {
+            colorPresets.forEach(opt => opt.classList.remove('active'));
+            colorName.textContent = 'Personalizado';
+        }
+    });
+}
+
+// CONFIGURAR GESTIÓN DE MODAL
+function setupModalHandling() {
+    const modal = document.getElementById('eventModal');
+    
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeEventModal();
+        }
+    });
+    
+    const modalContent = modal.querySelector('.modal-container');
+    modalContent.addEventListener('click', function(e) {
+        e.stopPropagation();
     });
 }
 
@@ -61,15 +98,15 @@ async function checkConnection() {
         const result = await response.json();
         
         if (result.success) {
-            updateStatus('Conectado a Google Sheets', 'success');
-            showNotification('✅ ' + result.message, 'success');
+            updateStatus('Conectado', 'success');
+            showNotification('✅ Conexión exitosa con Google Sheets', 'success');
             await loadEvents();
         } else {
             throw new Error(result.message);
         }
     } catch (error) {
         console.error('Error de conexión:', error);
-        updateStatus('Error de conexión', 'error');
+        updateStatus('Sin conexión', 'error');
         showNotification('❌ ' + error.message, 'error');
         loadSampleData();
     } finally {
@@ -90,8 +127,8 @@ async function loadEvents() {
         if (result.success) {
             events = result.events || [];
             renderCalendar();
-            hideEventsList(); // Ocultar lista al cargar/recargar
-            showNotification('✅ ' + result.message, 'success');
+            hideEventsList();
+            showNotification('✅ Eventos cargados correctamente', 'success');
         } else {
             throw new Error(result.message);
         }
@@ -110,12 +147,18 @@ async function saveEventFromForm() {
         date: document.getElementById('eventDate').value,
         time: document.getElementById('eventTime').value,
         title: document.getElementById('eventTitle').value,
-        description: document.getElementById('eventDescription').value, // NUEVO CAMPO
+        description: document.getElementById('eventDescription').value,
         location: document.getElementById('eventLocation').value,
         organizer: document.getElementById('eventOrganizer').value,
         guests: document.getElementById('eventGuests').value,
-        color: document.getElementById('eventColor').value // NUEVO CAMPO
+        color: document.getElementById('eventColor').value
     };
+    
+    // Validación básica
+    if (!eventData.date || !eventData.title) {
+        showNotification('❌ Fecha y título son obligatorios', 'error');
+        return;
+    }
     
     try {
         showLoading(true);
@@ -177,7 +220,7 @@ async function deleteEvent() {
     }
 }
 
-// RENDERIZAR CALENDARIO MEJORADO
+// RENDERIZAR CALENDARIO MODERNO
 function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
@@ -185,15 +228,6 @@ function renderCalendar() {
     if (!calendar) return;
     
     calendar.innerHTML = '';
-    
-    // Encabezados de días
-    const daysOfWeek = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    daysOfWeek.forEach(day => {
-        const dayHeader = document.createElement('div');
-        dayHeader.className = 'day-header';
-        dayHeader.textContent = day;
-        calendar.appendChild(dayHeader);
-    });
     
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -211,7 +245,7 @@ function renderCalendar() {
     // Días del mes anterior
     for (let i = startingDay - 1; i >= 0; i--) {
         const day = document.createElement('div');
-        day.className = 'day other-month';
+        day.className = 'calendar-day other-month';
         day.innerHTML = `<div class="day-number">${prevMonthLastDay - i}</div>`;
         calendar.appendChild(day);
     }
@@ -224,7 +258,7 @@ function renderCalendar() {
         const day = document.createElement('div');
         const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
         
-        day.className = 'day';
+        day.className = 'calendar-day';
         day.innerHTML = `<div class="day-number">${i}</div>`;
         day.dataset.date = dateStr;
         
@@ -233,26 +267,29 @@ function renderCalendar() {
             day.classList.add('today');
         }
         
-        // Verificar si tiene eventos - MEJORADO CON COLORES Y LÍNEAS
+        // Verificar si tiene eventos
         const dayEvents = getEventsForDate(dateStr);
         if (dayEvents.length > 0) {
-            day.classList.add('has-events');
             const eventsIndicator = document.createElement('div');
             eventsIndicator.className = 'events-indicator';
             
-            // Crear líneas de colores para cada evento (máximo 4 líneas)
-            dayEvents.slice(0, 4).forEach(event => {
+            // Crear líneas de colores para cada evento
+            dayEvents.slice(0, 3).forEach(event => {
                 const eventLine = document.createElement('div');
                 eventLine.className = 'event-line';
                 eventLine.style.backgroundColor = event.color || '#4facfe';
-                eventLine.title = event.title; // Tooltip
+                eventLine.title = event.title;
                 eventsIndicator.appendChild(eventLine);
             });
             
             day.appendChild(eventsIndicator);
         }
         
-        day.addEventListener('click', () => selectDate(dateStr, day));
+        day.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectDate(dateStr, day);
+        });
+        
         calendar.appendChild(day);
     }
     
@@ -261,7 +298,7 @@ function renderCalendar() {
     const remainingCells = totalCells - calendar.children.length;
     for (let i = 1; i <= remainingCells; i++) {
         const day = document.createElement('div');
-        day.className = 'day other-month';
+        day.className = 'calendar-day other-month';
         day.innerHTML = `<div class="day-number">${i}</div>`;
         calendar.appendChild(day);
     }
@@ -278,7 +315,7 @@ function selectDate(date, dayElement) {
     selectedDate = date;
     
     // Remover selección anterior
-    document.querySelectorAll('.day.selected').forEach(day => {
+    document.querySelectorAll('.calendar-day.selected').forEach(day => {
         day.classList.remove('selected');
     });
     
@@ -290,7 +327,7 @@ function selectDate(date, dayElement) {
     showEventsList();
 }
 
-// MOSTRAR EVENTOS DEL DÍA - MEJORADO CON DESCRIPCIÓN Y COLOR
+// MOSTRAR EVENTOS DEL DÍA - DISEÑO MODERNO
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -298,14 +335,19 @@ function showDayEvents(date) {
     const dayEvents = getEventsForDate(date);
     
     if (dayEvents.length === 0) {
-        eventsContainer.innerHTML = '<p class="no-events">No hay eventos para este día</p>';
+        eventsContainer.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-calendar-day"></i>
+                <p>No hay eventos para este día</p>
+            </div>
+        `;
         return;
     }
     
     eventsContainer.innerHTML = dayEvents.map((event, index) => `
-        <div class="event-item" onclick="editEvent(${index})" style="border-left-color: ${event.color || '#4facfe'}">
+        <div class="event-card" onclick="editEvent(${index})" style="border-left-color: ${event.color || '#4facfe'}">
             <div class="event-time">
-                <span class="event-color-indicator" style="background-color: ${event.color || '#4facfe'}"></span>
+                <span class="event-color-badge" style="background-color: ${event.color || '#4facfe'}"></span>
                 ${event.time}
             </div>
             <div class="event-title">${event.title}</div>
@@ -324,8 +366,6 @@ function showEventsList() {
     const eventsList = document.getElementById('eventsList');
     if (eventsList) {
         eventsList.style.display = 'block';
-        eventsList.classList.remove('hidden');
-        eventsList.classList.add('visible');
     }
 }
 
@@ -333,12 +373,10 @@ function hideEventsList() {
     const eventsList = document.getElementById('eventsList');
     if (eventsList) {
         eventsList.style.display = 'none';
-        eventsList.classList.remove('visible');
-        eventsList.classList.add('hidden');
     }
 }
 
-// MODAL DE EVENTOS - MEJORADO
+// MODAL DE EVENTOS - DISEÑO MODERNO
 function showEventModal(event = null) {
     if (!selectedDate && !event) {
         showNotification('Por favor, selecciona una fecha primero', 'error');
@@ -348,9 +386,14 @@ function showEventModal(event = null) {
     const modal = document.getElementById('eventModal');
     const deleteBtn = document.getElementById('deleteBtn');
     const colorInput = document.getElementById('eventColor');
+    const colorName = document.getElementById('selectedColorName');
+    
+    // Bloquear scroll del fondo
+    document.body.style.overflow = 'hidden';
+    isModalOpen = true;
     
     // Resetear presets de color
-    document.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('active'));
+    document.querySelectorAll('.color-preset').forEach(opt => opt.classList.remove('active'));
     
     if (event) {
         // Modo edición
@@ -366,9 +409,12 @@ function showEventModal(event = null) {
         colorInput.value = event.color || '#4facfe';
         
         // Activar preset de color si existe
-        const matchingPreset = document.querySelector(`.color-option[data-color="${event.color}"]`);
+        const matchingPreset = document.querySelector(`.color-preset[data-color="${event.color}"]`);
         if (matchingPreset) {
             matchingPreset.classList.add('active');
+            colorName.textContent = matchingPreset.getAttribute('data-name');
+        } else {
+            colorName.textContent = 'Personalizado';
         }
         
         deleteBtn.style.display = 'block';
@@ -381,19 +427,30 @@ function showEventModal(event = null) {
         colorInput.value = '#4facfe';
         
         // Activar preset por defecto
-        const defaultPreset = document.querySelector('.color-option[data-color="#4facfe"]');
+        const defaultPreset = document.querySelector('.color-preset[data-color="#4facfe"]');
         if (defaultPreset) {
             defaultPreset.classList.add('active');
+            colorName.textContent = defaultPreset.getAttribute('data-name');
         }
         
         deleteBtn.style.display = 'none';
     }
     
     modal.style.display = 'block';
+    
+    // Enfocar el primer campo
+    setTimeout(() => {
+        document.getElementById('eventTitle').focus();
+    }, 300);
 }
 
 function closeEventModal() {
-    document.getElementById('eventModal').style.display = 'none';
+    const modal = document.getElementById('eventModal');
+    modal.style.display = 'none';
+    
+    // Restaurar scroll del fondo
+    document.body.style.overflow = 'auto';
+    isModalOpen = false;
 }
 
 // EDITAR EVENTO
@@ -402,12 +459,12 @@ function editEvent(index) {
     showEventModal(event);
 }
 
-// CAMBIAR MES - MEJORADO (OCULTA LISTA DE EVENTOS)
+// CAMBIAR MES - MEJORADO
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
     renderCalendar();
-    hideEventsList(); // OCULTAR lista al cambiar de mes
-    selectedDate = null; // Resetear fecha seleccionada
+    hideEventsList();
+    selectedDate = null;
     
     showNotification(`📅 Cambiado a ${currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`, 'success');
 }
@@ -419,8 +476,8 @@ function updateStatus(message, type) {
     if (statusDot && statusText) {
         statusText.textContent = message;
         statusDot.style.background = 
-            type === 'success' ? '#28a745' : 
-            type === 'error' ? '#dc3545' : '#ffc107';
+            type === 'success' ? '#10b981' : 
+            type === 'error' ? '#ef4444' : '#f59e0b';
     }
 }
 
@@ -429,7 +486,7 @@ function showNotification(message, type) {
     if (!notification) return;
     
     notification.textContent = message;
-    notification.className = `notification ${type} show`;
+    notification.className = `notification-toast ${type} show`;
     
     setTimeout(() => {
         notification.classList.remove('show');
@@ -439,11 +496,15 @@ function showNotification(message, type) {
 function showLoading(show) {
     const loading = document.getElementById('loading');
     if (loading) {
-        loading.style.display = show ? 'block' : 'none';
+        if (show) {
+            loading.classList.add('show');
+        } else {
+            loading.classList.remove('show');
+        }
     }
 }
 
-// DATOS DE EJEMPLO MEJORADOS
+// DATOS DE EJEMPLO
 function loadSampleData() {
     const today = new Date().toISOString().split('T')[0];
     events = [
@@ -480,3 +541,5 @@ window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
 window.editEvent = editEvent;
 window.showEventModal = showEventModal;
+window.saveEventFromForm = saveEventFromForm;
+window.hideEventsList = hideEventsList;
