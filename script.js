@@ -6,7 +6,7 @@ let currentDate = new Date();
 let events = [];
 let selectedDate = null;
 let isModalOpen = false;
-let currentEditingEvent = null; // Nuevo: para trackear evento en edición
+let currentEditingEvent = null; // Para trackear evento en edición
 
 // Variables para Lazy Loading
 let eventsCache = new Map();
@@ -510,7 +510,7 @@ function showEventModal(event = null) {
     document.querySelectorAll('.color-preset').forEach(opt => opt.classList.remove('active'));
     
     if (event) {
-        // Modo edición - GUARDAR EL EVENTO ORIGINAL PARA COMPARAR CAMBIOS
+        // Modo edición
         currentEditingEvent = {...event}; // Copia del evento original
         
         document.getElementById('modalTitle').textContent = 'Editar Evento';
