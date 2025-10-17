@@ -230,7 +230,67 @@ body {
     box-shadow: var(--shadow-lg);
     background: linear-gradient(135deg, var(--primary-dark), var(--primary));
 }
+/* Estilos para loading en modal */
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
 
+.btn:disabled:hover {
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+/* Animación de spinner para botones */
+.fa-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Overlay de loading para modal */
+.modal-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    border-radius: var(--radius-xl);
+}
+
+.modal-loading .loading-spinner {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid var(--gray-200);
+    border-top: 3px solid var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Mejorar visibilidad de eventos */
+.event-card {
+    position: relative;
+}
+
+.event-id {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    font-size: 0.7rem;
+    color: var(--gray-400);
+    background: var(--gray-100);
+    padding: 0.2rem 0.4rem;
+    border-radius: var(--radius-sm);
+}
 /* ===== ESTADO DE CARGA ===== */
 .loading-state {
     display: none;
