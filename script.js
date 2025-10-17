@@ -1,6 +1,6 @@
-// script.js - VERSIÓN CON MANEJO MEJORADO DE CORS
-const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbznO3sH7_OBv_9A2xAtY0Kc2FdsuMUDg6k2nPdq_gmjKggNqgQiMoSalLVf95gtQqYl9Q/exec';
 
+// script.js - VERSIÓN CON ID ÚNICO Y FEEDBACK DE CARGA
+const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyF1fkKZQtfjENTzd2_yYHELn3EakfCmjw-PAATnK6mn6ZfWyALQmh_NegP8Hdrntb5Aw/exec';
 
 // Variables globales
 let currentDate = new Date();
@@ -8,6 +8,7 @@ let events = [];
 let selectedDate = null;
 let isModalOpen = false;
 let currentEditingEvent = null;
+let isSaving = false; // Nuevo: controlar estado de guardado
 
 // Variables para Lazy Loading
 let eventsCache = new Map();
@@ -165,7 +166,6 @@ async function loadEventsLazy(targetDate = null) {
         const result = await response.json();
         
         if (result.success) {
-            // CORRECCIÓN: Guardar eventos en cache y variable global
             const loadedEvents = result.events || [];
             eventsCache.set(cacheKey, {
                 events: loadedEvents,
@@ -176,10 +176,7 @@ async function loadEventsLazy(targetDate = null) {
             currentRange = range;
             
             console.log('✅ Eventos cargados (Lazy Loading):', loadedEvents.length, 'eventos');
-            console.log('📋 Lista de eventos:', loadedEvents);
-            
             renderCalendar();
-            showNotification('✅ Calendario actualizado con ' + loadedEvents.length + ' eventos', 'success');
         } else {
             throw new Error(result.message || 'Error desconocido al cargar eventos');
         }
@@ -206,10 +203,9 @@ function calculateLoadRange(centerDate) {
     };
 }
 
-// MEZCLAR EVENTOS EN CACHE - CORREGIDO
+// MEZCLAR EVENTOS EN CACHE
 function mergeEventsIntoCache(newEvents) {
-    console.log('🔄 Mezclando eventos en cache:', newEvents);
-    events = newEvents; // CORRECCIÓN: Asignar directamente a la variable global
+    events = newEvents;
 }
 
 // PRECARGAR MESES ADYACENTES
@@ -240,10 +236,8 @@ async function loadEventsNormal() {
         
         if (result.success) {
             events = result.events || [];
-            console.log('📋 Eventos cargados (normal):', events);
             renderCalendar();
             hideEventsList();
-            showNotification('✅ Eventos cargados correctamente', 'success');
         } else {
             throw new Error(result.message);
         }
@@ -256,8 +250,14 @@ async function loadEventsNormal() {
     }
 }
 
-// GUARDAR EVENTO
+// GUARDAR EVENTO - MEJORADO CON FEEDBACK VISUAL
 async function saveEventFromForm() {
+    // Prevenir múltiples envíos
+    if (isSaving) {
+        console.log('⏳ Guardado ya en progreso...');
+        return;
+    }
+    
     const eventData = {
         id: document.getElementById('editId').value,
         date: document.getElementById('eventDate').value,
@@ -276,7 +276,8 @@ async function saveEventFromForm() {
     }
     
     try {
-        showLoading(true);
+        isSaving = true;
+        showModalLoading(true); // Nuevo: feedback visual en modal
         
         const params = new URLSearchParams({
             action: 'saveEvent',
@@ -304,20 +305,30 @@ async function saveEventFromForm() {
         console.error('Error guardando evento:', error);
         showNotification('❌ Error: ' + error.message, 'error');
     } finally {
-        showLoading(false);
+        isSaving = false;
+        showModalLoading(false);
     }
 }
 
-// ELIMINAR EVENTO
+// ELIMINAR EVENTO - MEJORADO CON FEEDBACK VISUAL
 async function deleteEvent() {
     const eventId = document.getElementById('editId').value;
     
-    if (!eventId || !confirm('¿Estás seguro de que quieres eliminar este evento?')) {
+    if (!eventId) {
+        showNotification('❌ No se puede identificar el evento a eliminar', 'error');
+        return;
+    }
+    
+    if (!confirm('¿Estás seguro de que quieres eliminar este evento?')) {
         return;
     }
     
     try {
-        showLoading(true);
+        isSaving = true;
+        showModalLoading(true); // Nuevo: feedback visual en modal
+        
+        console.log('🗑️ Eliminando evento ID:', eventId);
+        
         const response = await fetch(GAS_WEB_APP_URL + '?action=deleteEvent&id=' + eventId);
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -337,19 +348,17 @@ async function deleteEvent() {
         console.error('Error eliminando evento:', error);
         showNotification('❌ Error: ' + error.message, 'error');
     } finally {
-        showLoading(false);
+        isSaving = false;
+        showModalLoading(false);
     }
 }
 
-// RENDERIZAR CALENDARIO - COMPLETAMENTE REVISADO
+// RENDERIZAR CALENDARIO
 function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
     
-    if (!calendar) {
-        console.error('❌ No se encontró el elemento calendar');
-        return;
-    }
+    if (!calendar) return;
     
     calendar.innerHTML = '';
     
@@ -365,16 +374,6 @@ function renderCalendar() {
     const lastDay = new Date(year, month + 1, 0);
     const startingDay = firstDay.getDay();
     const prevMonthLastDay = new Date(year, month, 0).getDate();
-    
-    console.log('📅 Renderizando calendario:', {
-        year: year,
-        month: month,
-        firstDay: firstDay,
-        lastDay: lastDay,
-        startingDay: startingDay,
-        totalEvents: events.length,
-        events: events
-    });
     
     // Días del mes anterior
     for (let i = startingDay - 1; i >= 0; i--) {
@@ -396,24 +395,16 @@ function renderCalendar() {
         day.innerHTML = `<div class="day-number">${i}</div>`;
         day.dataset.date = dateStr;
         
-        // Marcar si es hoy
         if (dateStr === todayStr) {
             day.classList.add('today');
         }
         
-        // Verificar si tiene eventos - CORREGIDO
         const dayEvents = getEventsForDate(dateStr);
-        
-        // DEBUG: Mostrar eventos para este día
-        if (dayEvents.length > 0) {
-            console.log(`📌 Día ${dateStr} tiene ${dayEvents.length} eventos:`, dayEvents);
-        }
         
         if (dayEvents.length > 0) {
             const eventsIndicator = document.createElement('div');
             eventsIndicator.className = 'events-indicator';
             
-            // Crear líneas de colores para cada evento
             dayEvents.slice(0, 3).forEach(event => {
                 const eventLine = document.createElement('div');
                 eventLine.className = 'event-line';
@@ -422,7 +413,6 @@ function renderCalendar() {
                 eventsIndicator.appendChild(eventLine);
             });
             
-            // Si hay más de 3 eventos, mostrar indicador
             if (dayEvents.length > 3) {
                 const moreEvents = document.createElement('div');
                 moreEvents.className = 'event-line';
@@ -451,30 +441,22 @@ function renderCalendar() {
         day.innerHTML = `<div class="day-number">${i}</div>`;
         calendar.appendChild(day);
     }
-    
-    console.log('✅ Calendario renderizado correctamente');
 }
 
-// OBTENER EVENTOS PARA FECHA - CORREGIDO
+// OBTENER EVENTOS PARA FECHA
 function getEventsForDate(date) {
     if (!events || !Array.isArray(events)) {
-        console.warn('⚠️ events no es un array válido:', events);
         return [];
     }
     
     const dayEvents = events.filter(event => {
-        if (!event || !event.date) {
-            console.warn('⚠️ Evento inválido:', event);
-            return false;
-        }
+        if (!event || !event.date) return false;
         
-        // Normalizar fechas para comparación
         const eventDate = new Date(event.date).toISOString().split('T')[0];
         const targetDate = new Date(date).toISOString().split('T')[0];
         
         return eventDate === targetDate;
     }).sort((a, b) => {
-        // Ordenar por hora
         const timeA = a.time || '00:00';
         const timeB = b.time || '00:00';
         return timeA.localeCompare(timeB);
@@ -483,33 +465,43 @@ function getEventsForDate(date) {
     return dayEvents;
 }
 
+// BUSCAR EVENTO POR ID - NUEVA FUNCIÓN CRÍTICA
+function findEventById(eventId) {
+    if (!events || !Array.isArray(events)) {
+        console.error('❌ No hay eventos cargados o array inválido');
+        return null;
+    }
+    
+    // Buscar por ID exacto
+    const event = events.find(e => e.id == eventId); // Usar == para compatibilidad
+    
+    if (!event) {
+        console.error('❌ Evento no encontrado con ID:', eventId);
+        console.log('📋 Eventos disponibles:', events);
+    }
+    
+    return event;
+}
+
 // SELECCIONAR FECHA
 function selectDate(date, dayElement) {
     selectedDate = date;
     
-    // Remover selección anterior
     document.querySelectorAll('.calendar-day.selected').forEach(day => {
         day.classList.remove('selected');
     });
     
-    // Agregar selección actual
     dayElement.classList.add('selected');
-    
-    // Mostrar eventos del día
     showDayEvents(date);
     showEventsList();
 }
 
-// MOSTRAR EVENTOS DEL DÍA - CORREGIDO
+// MOSTRAR EVENTOS DEL DÍA - CORREGIDO CON ID ÚNICO
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
-    if (!eventsContainer) {
-        console.error('❌ No se encontró el contenedor de eventos del día');
-        return;
-    }
+    if (!eventsContainer) return;
     
     const dayEvents = getEventsForDate(date);
-    console.log(`📋 Mostrando eventos para ${date}:`, dayEvents);
     
     if (dayEvents.length === 0) {
         eventsContainer.innerHTML = `
@@ -521,8 +513,9 @@ function showDayEvents(date) {
         return;
     }
     
-    eventsContainer.innerHTML = dayEvents.map((event, index) => `
-        <div class="event-card" onclick="editEvent(${index})" style="border-left-color: ${event.color || '#4facfe'}">
+    // CORRECCIÓN: Usar ID único en lugar del índice
+    eventsContainer.innerHTML = dayEvents.map(event => `
+        <div class="event-card" onclick="editEventById('${event.id}')" style="border-left-color: ${event.color || '#4facfe'}">
             <div class="event-time">
                 <span class="event-color-badge" style="background-color: ${event.color || '#4facfe'}"></span>
                 ${event.time || 'Sin hora'}
@@ -533,9 +526,33 @@ function showDayEvents(date) {
                 ${event.location ? `<strong>Lugar:</strong> ${event.location}<br>` : ''}
                 ${event.organizer ? `<strong>Organizador:</strong> ${event.organizer}<br>` : ''}
                 ${event.guests ? `<strong>Invitados:</strong> ${event.guests}` : ''}
+                <small style="color: #94a3b8; display: block; margin-top: 5px;">ID: ${event.id}</small>
             </div>
         </div>
     `).join('');
+}
+
+// EDITAR EVENTO POR ID - NUEVA FUNCIÓN CRÍTICA
+function editEventById(eventId) {
+    console.log('✏️ Editando evento ID:', eventId);
+    
+    const event = findEventById(eventId);
+    
+    if (!event) {
+        showNotification('❌ No se pudo encontrar el evento seleccionado', 'error');
+        return;
+    }
+    
+    console.log('📋 Evento encontrado:', event);
+    showEventModal(event);
+}
+
+// EDITAR EVENTO (mantener por compatibilidad)
+function editEvent(index) {
+    console.warn('⚠️ Usando editEvent por índice - método obsoleto');
+    if (events[index]) {
+        editEventById(events[index].id);
+    }
 }
 
 // MOSTRAR/OCULTAR LISTA DE EVENTOS
@@ -575,7 +592,7 @@ function showEventModal(event = null) {
         currentEditingEvent = {...event};
         
         document.getElementById('modalTitle').textContent = 'Editar Evento';
-        document.getElementById('editId').value = event.id;
+        document.getElementById('editId').value = event.id; // CORRECCIÓN: Usar ID único
         dateInput.value = event.date;
         dateInput.disabled = false;
         document.getElementById('eventTime').value = event.time;
@@ -595,9 +612,12 @@ function showEventModal(event = null) {
         }
         
         deleteBtn.style.display = 'block';
+        
+        console.log('📝 Modal configurado para editar evento ID:', event.id);
     } else {
         document.getElementById('modalTitle').textContent = 'Nuevo Evento';
         document.getElementById('eventForm').reset();
+        document.getElementById('editId').value = ''; // CORRECCIÓN: Limpiar ID para nuevo evento
         dateInput.value = selectedDate;
         dateInput.disabled = true;
         document.getElementById('eventTime').value = '09:00';
@@ -611,6 +631,8 @@ function showEventModal(event = null) {
         
         deleteBtn.style.display = 'none';
         currentEditingEvent = null;
+        
+        console.log('🆕 Modal configurado para nuevo evento');
     }
     
     modal.style.display = 'block';
@@ -626,12 +648,7 @@ function closeEventModal() {
     document.body.style.overflow = 'auto';
     isModalOpen = false;
     currentEditingEvent = null;
-}
-
-// EDITAR EVENTO
-function editEvent(index) {
-    const event = events[index];
-    showEventModal(event);
+    showModalLoading(false); // Asegurar que se quite el loading al cerrar
 }
 
 // CAMBIAR MES
@@ -679,6 +696,41 @@ function showLoading(show) {
     }
 }
 
+// NUEVA FUNCIÓN: MOSTRAR LOADING EN MODAL
+function showModalLoading(show) {
+    const saveBtn = document.querySelector('.btn-primary');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const cancelBtn = document.querySelector('.btn-secondary');
+    
+    if (show) {
+        // Deshabilitar botones y mostrar loading
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+        }
+        if (deleteBtn) {
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = true;
+        }
+    } else {
+        // Restaurar botones
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="fas fa-save"></i> Guardar Evento';
+        }
+        if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Eliminar';
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
+        }
+    }
+}
+
 // LIMPIAR CACHE
 function clearEventsCache() {
     eventsCache.clear();
@@ -722,20 +774,8 @@ window.changeMonth = changeMonth;
 window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
 window.editEvent = editEvent;
+window.editEventById = editEventById; // NUEVA: Exportar función por ID
 window.showEventModal = showEventModal;
 window.saveEventFromForm = saveEventFromForm;
 window.hideEventsList = hideEventsList;
 window.clearEventsCache = clearEventsCache;
-
-// AGREGAR FUNCIÓN DE DIAGNÓSTICO
-window.testConnection = async function() {
-    console.log('🧪 Ejecutando test de conexión...');
-    await checkConnection();
-};
-
-// AGREGAR FUNCIÓN PARA VER EVENTOS ACTUALES
-window.showCurrentEvents = function() {
-    console.log('📋 Eventos actuales en memoria:', events);
-    console.log('📅 Fecha actual:', currentDate);
-    console.log('🎯 Eventos para hoy:', getEventsForDate(new Date().toISOString().split('T')[0]));
-};
