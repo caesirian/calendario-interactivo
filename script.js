@@ -1,5 +1,4 @@
-
-// script.js - VERSIÓN CON ID ÚNICO Y FEEDBACK DE CARGA
+// script.js - VERSIÓN FINAL COMPLETA
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbznO3sH7_OBv_9A2xAtY0Kc2FdsuMUDg6k2nPdq_gmjKggNqgQiMoSalLVf95gtQqYl9Q/exec';
 
 // Variables globales
@@ -8,7 +7,9 @@ let events = [];
 let selectedDate = null;
 let isModalOpen = false;
 let currentEditingEvent = null;
-let isSaving = false; // Nuevo: controlar estado de guardado
+let isSaving = false;
+let currentView = 'month'; // 'month' o 'list'
+let currentContextEvent = null; // Evento para menú contextual
 
 // Variables para Lazy Loading
 let eventsCache = new Map();
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
     setupColorPickerModern();
     setupModalHandling();
+    setupContextMenu();
     checkConnection();
 });
 
@@ -38,6 +40,23 @@ function setupEventListeners() {
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && isModalOpen) {
             closeEventModal();
+        }
+        if (e.key === 'Escape') {
+            hideContextMenu();
+        }
+    });
+
+    // Cerrar menú contextual al hacer clic fuera
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.context-menu') && !e.target.closest('.event-card') && !e.target.closest('.list-event-item') && !e.target.closest('.calendar-day')) {
+            hideContextMenu();
+        }
+    });
+
+    // Prevenir menú contextual por defecto
+    document.addEventListener('contextmenu', function(e) {
+        if (e.target.closest('.event-card') || e.target.closest('.list-event-item') || e.target.closest('.calendar-day')) {
+            e.preventDefault();
         }
     });
 }
@@ -93,6 +112,11 @@ function setupModalHandling() {
     });
 }
 
+// CONFIGURAR MENÚ CONTEXTUAL
+function setupContextMenu() {
+    // Event listeners para menú contextual se agregan dinámicamente
+}
+
 // VERIFICAR CONEXIÓN
 async function checkConnection() {
     try {
@@ -131,6 +155,23 @@ async function checkConnection() {
     }
 }
 
+// CAMBIAR VISTA
+function changeView(view) {
+    currentView = view;
+    
+    if (view === 'month') {
+        document.getElementById('monthView').style.display = 'block';
+        document.getElementById('listView').style.display = 'none';
+        renderCalendar();
+    } else if (view === 'list') {
+        document.getElementById('monthView').style.display = 'none';
+        document.getElementById('listView').style.display = 'block';
+        renderListView();
+    }
+    
+    showNotification(`📊 Cambiado a vista ${view === 'month' ? 'mes' : 'lista'}`, 'success');
+}
+
 // LAZY LOADING - FUNCIÓN PRINCIPAL
 async function loadEventsLazy(targetDate = null) {
     try {
@@ -143,7 +184,11 @@ async function loadEventsLazy(targetDate = null) {
         if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
             console.log('📦 Usando eventos en cache:', cacheKey);
             mergeEventsIntoCache(cached.events);
-            renderCalendar();
+            if (currentView === 'month') {
+                renderCalendar();
+            } else {
+                renderListView();
+            }
             return;
         }
         
@@ -176,7 +221,17 @@ async function loadEventsLazy(targetDate = null) {
             currentRange = range;
             
             console.log('✅ Eventos cargados (Lazy Loading):', loadedEvents.length, 'eventos');
-            renderCalendar();
+            
+            if (currentView === 'month') {
+                renderCalendar();
+            } else {
+                renderListView();
+            }
+            
+            // Recargar eventos del día si hay una fecha seleccionada
+            if (selectedDate) {
+                await reloadDayEventsUntilUpdated(selectedDate);
+            }
         } else {
             throw new Error(result.message || 'Error desconocido al cargar eventos');
         }
@@ -186,6 +241,31 @@ async function loadEventsLazy(targetDate = null) {
         await loadEventsNormal();
     } finally {
         showLoading(false);
+    }
+}
+
+// RECARGAR EVENTOS DEL DÍA HASTA ACTUALIZAR
+async function reloadDayEventsUntilUpdated(date, maxAttempts = 5) {
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+        attempts++;
+        console.log(`🔄 Recargando eventos del día (intento ${attempts}/${maxAttempts})`);
+        
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo
+        
+        const dayEvents = getEventsForDate(date);
+        showDayEvents(date);
+        
+        // Verificar si los eventos están actualizados
+        if (dayEvents.length > 0) {
+            console.log('✅ Eventos del día actualizados correctamente');
+            break;
+        }
+        
+        if (attempts === maxAttempts) {
+            console.warn('⚠️ No se pudieron actualizar los eventos del día después de varios intentos');
+        }
     }
 }
 
@@ -236,7 +316,11 @@ async function loadEventsNormal() {
         
         if (result.success) {
             events = result.events || [];
-            renderCalendar();
+            if (currentView === 'month') {
+                renderCalendar();
+            } else {
+                renderListView();
+            }
             hideEventsList();
         } else {
             throw new Error(result.message);
@@ -250,9 +334,8 @@ async function loadEventsNormal() {
     }
 }
 
-// GUARDAR EVENTO - MEJORADO CON FEEDBACK VISUAL
+// GUARDAR EVENTO - MEJORADO CON RECARGA AUTOMÁTICA
 async function saveEventFromForm() {
-    // Prevenir múltiples envíos
     if (isSaving) {
         console.log('⏳ Guardado ya en progreso...');
         return;
@@ -277,7 +360,7 @@ async function saveEventFromForm() {
     
     try {
         isSaving = true;
-        showModalLoading(true); // Nuevo: feedback visual en modal
+        showModalLoading(true);
         
         const params = new URLSearchParams({
             action: 'saveEvent',
@@ -296,7 +379,15 @@ async function saveEventFromForm() {
             clearEventsCache();
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
+            
+            // Recargar eventos y esperar a que terminen
             await loadEventsLazy();
+            
+            // Recargar eventos del día específico
+            if (selectedDate) {
+                await reloadDayEventsUntilUpdated(selectedDate);
+            }
+            
             currentEditingEvent = null;
         } else {
             throw new Error(result.message);
@@ -310,7 +401,7 @@ async function saveEventFromForm() {
     }
 }
 
-// ELIMINAR EVENTO - MEJORADO CON FEEDBACK VISUAL
+// ELIMINAR EVENTO - MEJORADO CON RECARGA AUTOMÁTICA
 async function deleteEvent() {
     const eventId = document.getElementById('editId').value;
     
@@ -325,7 +416,7 @@ async function deleteEvent() {
     
     try {
         isSaving = true;
-        showModalLoading(true); // Nuevo: feedback visual en modal
+        showModalLoading(true);
         
         console.log('🗑️ Eliminando evento ID:', eventId);
         
@@ -339,7 +430,15 @@ async function deleteEvent() {
             clearEventsCache();
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
+            
+            // Recargar eventos y esperar a que terminen
             await loadEventsLazy();
+            
+            // Recargar eventos del día específico
+            if (selectedDate) {
+                await reloadDayEventsUntilUpdated(selectedDate);
+            }
+            
             currentEditingEvent = null;
         } else {
             throw new Error(result.message);
@@ -351,6 +450,28 @@ async function deleteEvent() {
         isSaving = false;
         showModalLoading(false);
     }
+}
+
+// FORMATEAR FECHA LEGIBLE
+function formatEventDate(dateString) {
+    const date = new Date(dateString);
+    const options = { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    };
+    return date.toLocaleDateString('es-ES', options);
+}
+
+// FORMATEAR FECHA CORTA
+function formatShortDate(dateString) {
+    const date = new Date(dateString);
+    const options = { 
+        day: 'numeric', 
+        month: 'short'
+    };
+    return date.toLocaleDateString('es-ES', options);
 }
 
 // RENDERIZAR CALENDARIO
@@ -424,6 +545,9 @@ function renderCalendar() {
             day.appendChild(eventsIndicator);
         }
         
+        // Agregar event listeners para menú contextual
+        setupDayContextMenu(day, dateStr);
+        
         day.addEventListener('click', (e) => {
             e.stopPropagation();
             selectDate(dateStr, day);
@@ -440,6 +564,195 @@ function renderCalendar() {
         day.className = 'calendar-day other-month';
         day.innerHTML = `<div class="day-number">${i}</div>`;
         calendar.appendChild(day);
+    }
+}
+
+// RENDERIZAR VISTA LISTA
+function renderListView() {
+    const container = document.getElementById('eventsListContainer');
+    if (!container) return;
+    
+    if (!events || events.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-calendar-day"></i>
+                <p>No hay eventos para mostrar</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Agrupar eventos por mes
+    const eventsByMonth = {};
+    events.forEach(event => {
+        const date = new Date(event.date);
+        const monthKey = date.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' });
+        
+        if (!eventsByMonth[monthKey]) {
+            eventsByMonth[monthKey] = [];
+        }
+        eventsByMonth[monthKey].push(event);
+    });
+    
+    // Ordenar meses
+    const sortedMonths = Object.keys(eventsByMonth).sort((a, b) => {
+        return new Date(a) - new Date(b);
+    });
+    
+    container.innerHTML = sortedMonths.map(month => {
+        const monthEvents = eventsByMonth[month].sort((a, b) => {
+            return new Date(a.date) - new Date(b.date) || a.time.localeCompare(b.time);
+        });
+        
+        return `
+            <div class="month-group">
+                <h3 class="month-title">${month}</h3>
+                <div class="events-list">
+                    ${monthEvents.map(event => `
+                        <div class="list-event-item" 
+                             onclick="editEventById('${event.id}')"
+                             style="border-left-color: ${event.color || '#4facfe'}">
+                            <div class="list-event-date">
+                                ${formatEventDate(event.date)} - ${event.time}
+                            </div>
+                            <div class="list-event-title">${event.title || 'Sin título'}</div>
+                            <div class="list-event-details">
+                                ${event.location ? `<div><strong>Lugar:</strong> ${event.location}</div>` : ''}
+                                ${event.organizer ? `<div><strong>Organizador:</strong> ${event.organizer}</div>` : ''}
+                                ${event.description ? `<div>${event.description}</div>` : ''}
+                            </div>
+                            <div class="list-event-meta">
+                                ${event.guests ? `<span><i class="fas fa-users"></i> ${event.guests.split(',').length} invitados</span>` : ''}
+                                <span class="copy-hint">Mantén presionado para copiar</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Agregar event listeners para menú contextual a los elementos de lista
+    setTimeout(() => {
+        document.querySelectorAll('.list-event-item').forEach(item => {
+            setupEventContextMenu(item);
+        });
+    }, 100);
+}
+
+// CONFIGURAR MENÚ CONTEXTUAL PARA DÍAS
+function setupDayContextMenu(dayElement, dateStr) {
+    let pressTimer;
+    
+    dayElement.addEventListener('touchstart', function(e) {
+        pressTimer = setTimeout(() => {
+            showDayContextMenu(dateStr, e);
+        }, 500);
+    });
+    
+    dayElement.addEventListener('touchend', function() {
+        clearTimeout(pressTimer);
+    });
+    
+    dayElement.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        showDayContextMenu(dateStr, e);
+    });
+}
+
+// CONFIGURAR MENÚ CONTEXTUAL PARA EVENTOS
+function setupEventContextMenu(eventElement) {
+    let pressTimer;
+    
+    eventElement.addEventListener('touchstart', function(e) {
+        pressTimer = setTimeout(() => {
+            const eventId = eventElement.onclick.toString().match(/'([^']+)'/)[1];
+            const event = findEventById(eventId);
+            if (event) {
+                showEventContextMenu(event, e);
+            }
+        }, 500);
+    });
+    
+    eventElement.addEventListener('touchend', function() {
+        clearTimeout(pressTimer);
+    });
+    
+    eventElement.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        const eventId = eventElement.onclick.toString().match(/'([^']+)'/)[1];
+        const event = findEventById(eventId);
+        if (event) {
+            showEventContextMenu(event, e);
+        }
+    });
+}
+
+// MOSTRAR MENÚ CONTEXTUAL PARA DÍAS
+function showDayContextMenu(dateStr, e) {
+    const dayEvents = getEventsForDate(dateStr);
+    if (dayEvents.length === 0) return;
+    
+    const menu = document.getElementById('contextMenu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    
+    currentContextEvent = { date: dateStr, events: dayEvents };
+}
+
+// MOSTRAR MENÚ CONTEXTUAL PARA EVENTOS
+function showEventContextMenu(event, e) {
+    const menu = document.getElementById('contextMenu');
+    menu.style.display = 'block';
+    menu.style.left = e.clientX + 'px';
+    menu.style.top = e.clientY + 'px';
+    
+    currentContextEvent = event;
+}
+
+// OCULTAR MENÚ CONTEXTUAL
+function hideContextMenu() {
+    const menu = document.getElementById('contextMenu');
+    menu.style.display = 'none';
+    currentContextEvent = null;
+}
+
+// COPIAR INFORMACIÓN DEL EVENTO
+async function copyEventData() {
+    if (!currentContextEvent) return;
+    
+    let text = '';
+    
+    if (currentContextEvent.events) {
+        // Es un día con múltiples eventos
+        text = `Eventos del ${formatEventDate(currentContextEvent.date)}\n\n`;
+        currentContextEvent.events.forEach((event, index) => {
+            text += `${index + 1}. ${event.title} - ${event.time}\n`;
+            if (event.location) text += `   Lugar: ${event.location}\n`;
+            if (event.organizer) text += `   Organizador: ${event.organizer}\n`;
+            if (event.description) text += `   Descripción: ${event.description}\n`;
+            text += '\n';
+        });
+    } else {
+        // Es un evento individual
+        const event = currentContextEvent;
+        text = `Evento: ${event.title}\n`;
+        text += `Fecha: ${formatEventDate(event.date)}\n`;
+        text += `Hora: ${event.time}\n`;
+        if (event.location) text += `Lugar: ${event.location}\n`;
+        if (event.organizer) text += `Organizador: ${event.organizer}\n`;
+        if (event.guests) text += `Invitados: ${event.guests}\n`;
+        if (event.description) text += `Descripción: ${event.description}\n`;
+    }
+    
+    try {
+        await navigator.clipboard.writeText(text);
+        showNotification('✅ Información copiada al portapapeles', 'success');
+        hideContextMenu();
+    } catch (err) {
+        console.error('Error al copiar: ', err);
+        showNotification('❌ Error al copiar información', 'error');
     }
 }
 
@@ -465,19 +778,17 @@ function getEventsForDate(date) {
     return dayEvents;
 }
 
-// BUSCAR EVENTO POR ID - NUEVA FUNCIÓN CRÍTICA
+// BUSCAR EVENTO POR ID
 function findEventById(eventId) {
     if (!events || !Array.isArray(events)) {
         console.error('❌ No hay eventos cargados o array inválido');
         return null;
     }
     
-    // Buscar por ID exacto
-    const event = events.find(e => e.id == eventId); // Usar == para compatibilidad
+    const event = events.find(e => e.id == eventId);
     
     if (!event) {
         console.error('❌ Evento no encontrado con ID:', eventId);
-        console.log('📋 Eventos disponibles:', events);
     }
     
     return event;
@@ -496,7 +807,7 @@ function selectDate(date, dayElement) {
     showEventsList();
 }
 
-// MOSTRAR EVENTOS DEL DÍA - CORREGIDO CON ID ÚNICO
+// MOSTRAR EVENTOS DEL DÍA - MEJORADO CON FORMATO LEGIBLE
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -513,26 +824,34 @@ function showDayEvents(date) {
         return;
     }
     
-    // CORRECCIÓN: Usar ID único en lugar del índice
     eventsContainer.innerHTML = dayEvents.map(event => `
-        <div class="event-card" onclick="editEventById('${event.id}')" style="border-left-color: ${event.color || '#4facfe'}">
-            <div class="event-time">
-                <span class="event-color-badge" style="background-color: ${event.color || '#4facfe'}"></span>
-                ${event.time || 'Sin hora'}
+        <div class="event-card" 
+             onclick="editEventById('${event.id}')" 
+             style="border-left-color: ${event.color || '#4facfe'}">
+            <div class="event-full-date">
+                <i class="fas fa-calendar-day"></i>
+                ${formatEventDate(event.date)} - ${event.time}
             </div>
             <div class="event-title">${event.title || 'Sin título'}</div>
             ${event.description ? `<div class="event-description">${event.description}</div>` : ''}
             <div class="event-details">
-                ${event.location ? `<strong>Lugar:</strong> ${event.location}<br>` : ''}
-                ${event.organizer ? `<strong>Organizador:</strong> ${event.organizer}<br>` : ''}
-                ${event.guests ? `<strong>Invitados:</strong> ${event.guests}` : ''}
-                <small style="color: #94a3b8; display: block; margin-top: 5px;">ID: ${event.id}</small>
+                ${event.location ? `<div><strong>Lugar:</strong> ${event.location}</div>` : ''}
+                ${event.organizer ? `<div><strong>Organizador:</strong> ${event.organizer}</div>` : ''}
+                ${event.guests ? `<div><strong>Invitados:</strong> ${event.guests}</div>` : ''}
             </div>
+            <div class="copy-hint">Mantén presionado para copiar</div>
         </div>
     `).join('');
+    
+    // Agregar event listeners para menú contextual
+    setTimeout(() => {
+        document.querySelectorAll('.event-card').forEach(card => {
+            setupEventContextMenu(card);
+        });
+    }, 100);
 }
 
-// EDITAR EVENTO POR ID - NUEVA FUNCIÓN CRÍTICA
+// EDITAR EVENTO POR ID
 function editEventById(eventId) {
     console.log('✏️ Editando evento ID:', eventId);
     
@@ -592,7 +911,7 @@ function showEventModal(event = null) {
         currentEditingEvent = {...event};
         
         document.getElementById('modalTitle').textContent = 'Editar Evento';
-        document.getElementById('editId').value = event.id; // CORRECCIÓN: Usar ID único
+        document.getElementById('editId').value = event.id;
         dateInput.value = event.date;
         dateInput.disabled = false;
         document.getElementById('eventTime').value = event.time;
@@ -617,7 +936,7 @@ function showEventModal(event = null) {
     } else {
         document.getElementById('modalTitle').textContent = 'Nuevo Evento';
         document.getElementById('eventForm').reset();
-        document.getElementById('editId').value = ''; // CORRECCIÓN: Limpiar ID para nuevo evento
+        document.getElementById('editId').value = '';
         dateInput.value = selectedDate;
         dateInput.disabled = true;
         document.getElementById('eventTime').value = '09:00';
@@ -648,7 +967,7 @@ function closeEventModal() {
     document.body.style.overflow = 'auto';
     isModalOpen = false;
     currentEditingEvent = null;
-    showModalLoading(false); // Asegurar que se quite el loading al cerrar
+    showModalLoading(false);
 }
 
 // CAMBIAR MES
@@ -659,6 +978,30 @@ function changeMonth(direction) {
     selectedDate = null;
     preloadAdjacentMonths();
     showNotification(`📅 Cambiado a ${currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`, 'success');
+}
+
+// EXPORTAR EVENTOS
+function exportEvents() {
+    if (!events || events.length === 0) {
+        showNotification('❌ No hay eventos para exportar', 'error');
+        return;
+    }
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+        + "Fecha,Hora,Título,Lugar,Organizador,Invitados,Descripción\n"
+        + events.map(event => 
+            `"${event.date}","${event.time}","${event.title}","${event.location}","${event.organizer}","${event.guests}","${event.description}"`
+        ).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `eventos_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('✅ Eventos exportados correctamente', 'success');
 }
 
 // FUNCIONES AUXILIARES
@@ -696,14 +1039,13 @@ function showLoading(show) {
     }
 }
 
-// NUEVA FUNCIÓN: MOSTRAR LOADING EN MODAL
+// MOSTRAR LOADING EN MODAL
 function showModalLoading(show) {
     const saveBtn = document.querySelector('.btn-primary');
     const deleteBtn = document.getElementById('deleteBtn');
     const cancelBtn = document.querySelector('.btn-secondary');
     
     if (show) {
-        // Deshabilitar botones y mostrar loading
         if (saveBtn) {
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
@@ -716,7 +1058,6 @@ function showModalLoading(show) {
             cancelBtn.disabled = true;
         }
     } else {
-        // Restaurar botones
         if (saveBtn) {
             saveBtn.disabled = false;
             saveBtn.innerHTML = '<i class="fas fa-save"></i> Guardar Evento';
@@ -765,17 +1106,27 @@ function loadSampleData() {
             color: '#43e97b'
         }
     ];
-    renderCalendar();
+    
+    if (currentView === 'month') {
+        renderCalendar();
+    } else {
+        renderListView();
+    }
+    
     showNotification('⚠️ Usando datos de ejemplo - Verifica la conexión con Google Sheets', 'error');
 }
 
 // FUNCIONES GLOBALES
 window.changeMonth = changeMonth;
+window.changeView = changeView;
 window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
 window.editEvent = editEvent;
-window.editEventById = editEventById; // NUEVA: Exportar función por ID
+window.editEventById = editEventById;
 window.showEventModal = showEventModal;
 window.saveEventFromForm = saveEventFromForm;
 window.hideEventsList = hideEventsList;
 window.clearEventsCache = clearEventsCache;
+window.copyEventData = copyEventData;
+window.hideContextMenu = hideContextMenu;
+window.exportEvents = exportEvents;
