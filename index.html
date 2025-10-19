@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Calendario Moderno | Gestor de Eventos</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
@@ -10,10 +13,10 @@
 <body>
     <div class="app-container">
         <!-- Header Moderno -->
-        <header class="app-header">
+        <header class="app-header" role="banner">
             <div class="header-content">
                 <div class="logo">
-                    <i class="fas fa-calendar-alt"></i>
+                    <i class="fas fa-calendar-alt" aria-hidden="true"></i>
                     <div class="logo-text">
                         <h1>Calendario</h1>
                         <span>Organiza tu tiempo</span>
@@ -22,7 +25,7 @@
                 <div class="header-actions">
                     <div class="connection-status" id="apiStatus">
                         <div class="status-indicator">
-                            <span class="status-dot"></span>
+                            <span class="status-dot" aria-hidden="true"></span>
                             <span id="statusText">Conectando...</span>
                         </div>
                     </div>
@@ -31,81 +34,81 @@
         </header>
 
         <!-- Contenido Principal -->
-        <main class="app-main">
+        <main class="app-main" role="main">
             <!-- Panel de Control -->
-            <section class="control-panel">
+            <section class="control-panel" aria-label="Controles del calendario">
                 <div class="month-navigation">
-                    <button class="nav-btn" onclick="changeMonth(-1)">
-                        <i class="fas fa-chevron-left"></i>
+                    <button class="nav-btn" onclick="changeMonth(-1)" aria-label="Mes anterior">
+                        <i class="fas fa-chevron-left" aria-hidden="true"></i>
                     </button>
-                    <h2 class="current-month" id="currentMonth"></h2>
-                    <button class="nav-btn" onclick="changeMonth(1)">
-                        <i class="fas fa-chevron-right"></i>
+                    <h2 class="current-month" id="currentMonth" aria-live="polite"></h2>
+                    <button class="nav-btn" onclick="changeMonth(1)" aria-label="Mes siguiente">
+                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
                     </button>
                 </div>
                 
                 <div class="view-controls">
-                    <select id="viewSelector" class="view-selector" onchange="changeView(this.value)">
+                    <select id="viewSelector" class="view-selector" onchange="changeView(this.value)" aria-label="Seleccionar vista">
                         <option value="month">Vista Mes</option>
                         <option value="list">Vista Lista</option>
                     </select>
                     
-                    <button class="add-event-btn" onclick="showEventModal()">
-                        <i class="fas fa-plus"></i>
+                    <button class="add-event-btn" onclick="showEventModal()" aria-label="Agregar nuevo evento">
+                        <i class="fas fa-plus" aria-hidden="true"></i>
                         <span>Nuevo Evento</span>
                     </button>
                 </div>
             </section>
 
             <!-- Indicador de Carga -->
-            <div class="loading-state" id="loading">
-                <div class="loading-spinner"></div>
+            <div class="loading-state" id="loading" aria-live="polite" aria-atomic="true">
+                <div class="loading-spinner" aria-hidden="true"></div>
                 <p>Cargando calendario...</p>
             </div>
 
             <!-- Vista Mes (Calendario) -->
-            <section class="calendar-section" id="monthView">
+            <section class="calendar-section" id="monthView" aria-label="Vista de calendario mensual">
                 <div class="calendar-header">
-                    <div class="week-days">
-                        <span>Dom</span>
-                        <span>Lun</span>
-                        <span>Mar</span>
-                        <span>Mié</span>
-                        <span>Jue</span>
-                        <span>Vie</span>
-                        <span>Sáb</span>
+                    <div class="week-days" role="row">
+                        <span role="columnheader">Dom</span>
+                        <span role="columnheader">Lun</span>
+                        <span role="columnheader">Mar</span>
+                        <span role="columnheader">Mié</span>
+                        <span role="columnheader">Jue</span>
+                        <span role="columnheader">Vie</span>
+                        <span role="columnheader">Sáb</span>
                     </div>
                 </div>
-                <div class="calendar-grid" id="calendar"></div>
+                <div class="calendar-grid" id="calendar" role="grid" aria-label="Días del mes"></div>
             </section>
 
             <!-- Vista Lista -->
-            <section class="list-section" id="listView" style="display: none;">
+            <section class="list-section" id="listView" style="display: none;" aria-label="Vista de lista de eventos">
                 <div class="list-header">
                     <h3>Eventos por Mes</h3>
                     <div class="list-actions">
-                        <button class="btn btn-secondary" onclick="exportEvents()">
-                            <i class="fas fa-download"></i>
+                        <button class="btn btn-secondary" onclick="exportEvents()" aria-label="Exportar eventos">
+                            <i class="fas fa-download" aria-hidden="true"></i>
                             Exportar
                         </button>
                     </div>
                 </div>
-                <div class="list-container" id="eventsListContainer">
+                <div class="list-container" id="eventsListContainer" role="list">
                     <!-- Los eventos se cargan aquí dinámicamente -->
                 </div>
             </section>
 
             <!-- Panel de Eventos del Día -->
-            <aside class="events-sidebar" id="eventsList" style="display: none;">
+            <aside class="events-sidebar" id="eventsList" style="display: none;" aria-label="Eventos del día seleccionado">
                 <div class="sidebar-header">
                     <h3>Eventos del Día</h3>
-                    <button class="close-sidebar" onclick="hideEventsList()">
-                        <i class="fas fa-times"></i>
+                    <button class="close-sidebar" onclick="hideEventsList()" aria-label="Cerrar panel de eventos">
+                        <i class="fas fa-times" aria-hidden="true"></i>
                     </button>
                 </div>
-                <div class="events-container" id="dayEvents">
+                <div class="events-container" id="dayEvents" role="list">
                     <div class="empty-state">
-                        <i class="fas fa-calendar-day"></i>
+                        <i class="fas fa-calendar-day" aria-hidden="true"></i>
                         <p>Selecciona una fecha para ver los eventos</p>
                     </div>
                 </div>
@@ -114,15 +117,15 @@
     </div>
 
     <!-- Modal Moderno -->
-    <div id="eventModal" class="modal-overlay">
+    <div id="eventModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <div class="modal-container">
             <div class="modal-header">
                 <div class="modal-title">
-                    <i class="fas fa-calendar-plus"></i>
+                    <i class="fas fa-calendar-plus" aria-hidden="true"></i>
                     <h3 id="modalTitle">Nuevo Evento</h3>
                 </div>
-                <button class="modal-close" onclick="closeEventModal()">
-                    <i class="fas fa-times"></i>
+                <button class="modal-close" onclick="closeEventModal()" aria-label="Cerrar modal">
+                    <i class="fas fa-times" aria-hidden="true"></i>
                 </button>
             </div>
 
@@ -133,31 +136,31 @@
                     <div class="form-grid">
                         <div class="form-group">
                             <label for="eventDate" class="form-label">
-                                <i class="fas fa-calendar"></i>
+                                <i class="fas fa-calendar" aria-hidden="true"></i>
                                 Fecha *
                             </label>
-                            <input type="date" id="eventDate" class="form-input" required>
+                            <input type="date" id="eventDate" class="form-input" required aria-required="true">
                         </div>
 
                         <div class="form-group">
                             <label for="eventTime" class="form-label">
-                                <i class="fas fa-clock"></i>
+                                <i class="fas fa-clock" aria-hidden="true"></i>
                                 Hora *
                             </label>
-                            <input type="time" id="eventTime" class="form-input" required value="09:00">
+                            <input type="time" id="eventTime" class="form-input" required aria-required="true" value="09:00">
                         </div>
 
                         <div class="form-group full-width">
                             <label for="eventTitle" class="form-label">
-                                <i class="fas fa-heading"></i>
+                                <i class="fas fa-heading" aria-hidden="true"></i>
                                 Título del Evento *
                             </label>
-                            <input type="text" id="eventTitle" class="form-input" required placeholder="¿Qué planeas hacer?">
+                            <input type="text" id="eventTitle" class="form-input" required aria-required="true" placeholder="¿Qué planeas hacer?">
                         </div>
 
                         <div class="form-group full-width">
                             <label for="eventDescription" class="form-label">
-                                <i class="fas fa-align-left"></i>
+                                <i class="fas fa-align-left" aria-hidden="true"></i>
                                 Descripción
                             </label>
                             <textarea id="eventDescription" class="form-textarea" rows="3" placeholder="Detalles adicionales del evento..."></textarea>
@@ -165,7 +168,7 @@
 
                         <div class="form-group">
                             <label for="eventLocation" class="form-label">
-                                <i class="fas fa-map-marker-alt"></i>
+                                <i class="fas fa-map-marker-alt" aria-hidden="true"></i>
                                 Lugar
                             </label>
                             <input type="text" id="eventLocation" class="form-input" placeholder="¿Dónde será?">
@@ -173,7 +176,7 @@
 
                         <div class="form-group">
                             <label for="eventOrganizer" class="form-label">
-                                <i class="fas fa-user"></i>
+                                <i class="fas fa-user" aria-hidden="true"></i>
                                 Organizador
                             </label>
                             <input type="text" id="eventOrganizer" class="form-input" placeholder="Tu nombre">
@@ -181,7 +184,7 @@
 
                         <div class="form-group full-width">
                             <label for="eventGuests" class="form-label">
-                                <i class="fas fa-users"></i>
+                                <i class="fas fa-users" aria-hidden="true"></i>
                                 Invitados
                             </label>
                             <textarea id="eventGuests" class="form-textarea" rows="2" placeholder="email1@ejemplo.com, email2@ejemplo.com"></textarea>
@@ -190,20 +193,20 @@
 
                         <div class="form-group full-width">
                             <label class="form-label">
-                                <i class="fas fa-palette"></i>
+                                <i class="fas fa-palette" aria-hidden="true"></i>
                                 Color del Evento
                             </label>
                             <div class="color-picker-modern">
-                                <input type="color" id="eventColor" value="#4facfe" class="color-input">
-                                <div class="color-presets-grid">
-                                    <div class="color-preset" style="background: #4facfe;" data-color="#4facfe" data-name="Azul"></div>
-                                    <div class="color-preset" style="background: #00f2fe;" data-color="#00f2fe" data-name="Celeste"></div>
-                                    <div class="color-preset" style="background: #43e97b;" data-color="#43e97b" data-name="Verde"></div>
-                                    <div class="color-preset" style="background: #fa709a;" data-color="#fa709a" data-name="Rosa"></div>
-                                    <div class="color-preset" style="background: #ff9a9e;" data-color="#ff9a9e" data-name="Coral"></div>
-                                    <div class="color-preset" style="background: #f6d365;" data-color="#f6d365" data-name="Amarillo"></div>
-                                    <div class="color-preset" style="background: #a8edea;" data-color="#a8edea" data-name="Menta"></div>
-                                    <div class="color-preset" style="background: #fed6e3;" data-color="#fed6e3" data-name="Lavanda"></div>
+                                <input type="color" id="eventColor" value="#4facfe" class="color-input" aria-label="Seleccionar color personalizado">
+                                <div class="color-presets-grid" role="listbox" aria-label="Colores predefinidos">
+                                    <div class="color-preset" style="background: #4facfe;" data-color="#4facfe" data-name="Azul" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #00f2fe;" data-color="#00f2fe" data-name="Celeste" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #43e97b;" data-color="#43e97b" data-name="Verde" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #fa709a;" data-color="#fa709a" data-name="Rosa" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #ff9a9e;" data-color="#ff9a9e" data-name="Coral" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #f6d365;" data-color="#f6d365" data-name="Amarillo" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #a8edea;" data-color="#a8edea" data-name="Menta" role="option" tabindex="0"></div>
+                                    <div class="color-preset" style="background: #fed6e3;" data-color="#fed6e3" data-name="Lavanda" role="option" tabindex="0"></div>
                                 </div>
                                 <div class="color-selected">
                                     <span id="selectedColorName">Azul</span>
@@ -216,15 +219,15 @@
 
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeEventModal()">
-                    <i class="fas fa-times"></i>
+                    <i class="fas fa-times" aria-hidden="true"></i>
                     Cancelar
                 </button>
                 <button type="submit" class="btn btn-primary" onclick="saveEventFromForm()">
-                    <i class="fas fa-save"></i>
+                    <i class="fas fa-save" aria-hidden="true"></i>
                     Guardar Evento
                 </button>
                 <button type="button" class="btn btn-danger" id="deleteBtn" style="display:none;" onclick="deleteEvent()">
-                    <i class="fas fa-trash"></i>
+                    <i class="fas fa-trash" aria-hidden="true"></i>
                     Eliminar
                 </button>
             </div>
@@ -232,21 +235,21 @@
     </div>
 
     <!-- Menú Contextual para Copiar -->
-    <div id="contextMenu" class="context-menu" style="display: none;">
+    <div id="contextMenu" class="context-menu" style="display: none;" role="menu">
         <div class="context-menu-content">
-            <button class="context-menu-item" onclick="copyEventData()">
-                <i class="fas fa-copy"></i>
+            <button class="context-menu-item" onclick="copyEventData()" role="menuitem">
+                <i class="fas fa-copy" aria-hidden="true"></i>
                 Copiar Información
             </button>
-            <button class="context-menu-item" onclick="hideContextMenu()">
-                <i class="fas fa-times"></i>
+            <button class="context-menu-item" onclick="hideContextMenu()" role="menuitem">
+                <i class="fas fa-times" aria-hidden="true"></i>
                 Cancelar
             </button>
         </div>
     </div>
 
     <!-- Sistema de Notificaciones Moderno -->
-    <div class="notification-system">
+    <div class="notification-system" aria-live="polite" aria-atomic="true">
         <div id="notification" class="notification-toast"></div>
     </div>
 
