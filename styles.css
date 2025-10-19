@@ -38,6 +38,16 @@
     /* Transiciones */
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    
+    /* Z-index escalas */
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 1040;
+    --z-modal: 1050;
+    --z-popover: 1060;
+    --z-tooltip: 1070;
+    --z-toast: 1080;
 }
 
 /* Reset moderno */
@@ -79,7 +89,7 @@ body {
     padding: 1rem 2rem;
     position: sticky;
     top: 0;
-    z-index: 1000;
+    z-index: var(--z-sticky);
 }
 
 .header-content {
@@ -192,6 +202,8 @@ body {
     cursor: pointer;
     transition: var(--transition);
     color: var(--gray-600);
+    min-width: 44px;
+    min-height: 44px;
 }
 
 .nav-btn:hover {
@@ -199,6 +211,11 @@ body {
     color: white;
     transform: translateY(-2px);
     box-shadow: var(--shadow);
+}
+
+.nav-btn:active {
+    transform: translateY(0);
+    transition: transform 0.1s;
 }
 
 .current-month {
@@ -225,6 +242,7 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition);
+    min-height: 44px;
 }
 
 .view-selector:focus {
@@ -247,12 +265,18 @@ body {
     cursor: pointer;
     transition: var(--transition);
     box-shadow: var(--shadow-md);
+    min-height: 44px;
 }
 
 .add-event-btn:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
     background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+}
+
+.add-event-btn:active {
+    transform: translateY(0);
+    transition: transform 0.1s;
 }
 
 /* ===== ESTADO DE CARGA ===== */
@@ -339,6 +363,7 @@ body {
     border: 1px solid transparent;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
+    touch-action: manipulation;
 }
 
 .calendar-day:hover {
@@ -347,6 +372,11 @@ body {
     z-index: 2;
     box-shadow: var(--shadow-md);
     border-color: var(--primary-light);
+}
+
+.calendar-day:active {
+    transform: scale(0.98);
+    transition: transform 0.1s;
 }
 
 .calendar-day.other-month {
@@ -469,12 +499,24 @@ body {
     border: 1px solid var(--gray-200);
     -webkit-tap-highlight-color: transparent;
     user-select: none;
+    touch-action: manipulation;
+    position: relative;
 }
 
 .list-event-item:hover {
     transform: translateX(4px);
     box-shadow: var(--shadow);
     border-left-width: 6px;
+}
+
+.list-event-item:active {
+    transform: translateX(4px) scale(0.98);
+    transition: transform 0.1s;
+}
+
+.list-event-item:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .list-event-date {
@@ -538,7 +580,7 @@ body {
     transform: translateY(-50%);
     width: 350px;
     max-height: 80vh;
-    z-index: 100;
+    z-index: var(--z-fixed);
 }
 
 .sidebar-header {
@@ -568,11 +610,17 @@ body {
     cursor: pointer;
     transition: var(--transition);
     color: var(--gray-600);
+    min-width: 44px;
+    min-height: 44px;
 }
 
 .close-sidebar:hover {
     background: var(--danger);
     color: white;
+}
+
+.close-sidebar:active {
+    transform: scale(0.95);
 }
 
 .events-container {
@@ -606,6 +654,7 @@ body {
     border: 1px solid var(--gray-200);
     -webkit-tap-highlight-color: transparent;
     user-select: none;
+    touch-action: manipulation;
     position: relative;
 }
 
@@ -613,6 +662,16 @@ body {
     transform: translateX(4px);
     box-shadow: var(--shadow);
     border-left-width: 6px;
+}
+
+.event-card:active {
+    transform: translateX(4px) scale(0.98);
+    transition: transform 0.1s;
+}
+
+.event-card:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .event-time {
@@ -676,7 +735,7 @@ body {
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(8px);
-    z-index: 2000;
+    z-index: var(--z-modal-backdrop);
     padding: 1rem;
 }
 
@@ -690,6 +749,7 @@ body {
     overflow: hidden;
     margin: 0 auto;
     animation: modalSlideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: var(--z-modal);
 }
 
 @keyframes modalSlideUp {
@@ -741,11 +801,17 @@ body {
     cursor: pointer;
     transition: var(--transition);
     color: var(--gray-600);
+    min-width: 44px;
+    min-height: 44px;
 }
 
 .modal-close:hover {
     background: var(--danger);
     color: white;
+}
+
+.modal-close:active {
+    transform: scale(0.95);
 }
 
 .modal-body {
@@ -797,6 +863,7 @@ body {
     transition: var(--transition);
     background: white;
     font-family: inherit;
+    min-height: 44px;
 }
 
 .form-input:focus, .form-textarea:focus {
@@ -829,6 +896,8 @@ body {
     border: none;
     border-radius: var(--radius);
     cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
 }
 
 .color-presets-grid {
@@ -845,11 +914,18 @@ body {
     transition: var(--transition);
     border: 2px solid transparent;
     position: relative;
+    min-width: 32px;
+    min-height: 32px;
 }
 
 .color-preset:hover {
     transform: scale(1.1);
     border-color: var(--gray-400);
+}
+
+.color-preset:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
 }
 
 .color-preset.active {
@@ -901,6 +977,7 @@ body {
     cursor: pointer;
     transition: var(--transition);
     font-size: 0.875rem;
+    min-height: 44px;
 }
 
 .btn-primary {
@@ -914,6 +991,10 @@ body {
     box-shadow: var(--shadow);
 }
 
+.btn-primary:active {
+    transform: translateY(0);
+}
+
 .btn-secondary {
     background: var(--gray-200);
     color: var(--gray-700);
@@ -923,6 +1004,10 @@ body {
     background: var(--gray-300);
     transform: translateY(-1px);
     box-shadow: var(--shadow);
+}
+
+.btn-secondary:active {
+    transform: translateY(0);
 }
 
 .btn-danger {
@@ -936,6 +1021,10 @@ body {
     box-shadow: var(--shadow);
 }
 
+.btn-danger:active {
+    transform: translateY(0);
+}
+
 /* ===== MENÚ CONTEXTUAL ===== */
 .context-menu {
     position: fixed;
@@ -943,7 +1032,7 @@ body {
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--gray-200);
-    z-index: 3000;
+    z-index: var(--z-popover);
     min-width: 200px;
     animation: contextMenuSlide 0.2s ease-out;
 }
@@ -977,6 +1066,7 @@ body {
     gap: 0.5rem;
     font-size: 0.875rem;
     color: var(--gray-700);
+    min-height: 44px;
 }
 
 .context-menu-item:hover {
@@ -984,12 +1074,16 @@ body {
     color: var(--primary);
 }
 
+.context-menu-item:active {
+    transform: scale(0.98);
+}
+
 /* ===== SISTEMA DE NOTIFICACIONES ===== */
 .notification-system {
     position: fixed;
     top: 2rem;
     right: 2rem;
-    z-index: 3000;
+    z-index: var(--z-toast);
 }
 
 .notification-toast {
@@ -1028,7 +1122,54 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* ===== RESPONSIVE DESIGN ===== */
+/* ===== MEJORAS DE ACCESIBILIDAD ===== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Focus visible para navegación por teclado */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.color-preset:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Mejoras para high contrast mode */
+@media (prefers-contrast: high) {
+    .calendar-day {
+        border: 2px solid var(--gray-300);
+    }
+    
+    .calendar-day.today {
+        border: 3px solid var(--primary);
+    }
+    
+    .calendar-day.selected {
+        border: 3px solid var(--accent);
+    }
+}
+
+/* Mejoras para reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ===== RESPONSIVE DESIGN MEJORADO ===== */
 @media (max-width: 1024px) {
     .app-main {
         padding: 1rem;
@@ -1113,6 +1254,16 @@ body {
     .list-actions {
         justify-content: center;
     }
+    
+    /* Mejoras específicas para móviles */
+    .nav-btn, .add-event-btn, .close-sidebar, .modal-close {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    .calendar-day {
+        touch-action: manipulation;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1152,9 +1303,18 @@ body {
         width: 100%;
         justify-content: center;
     }
+    
+    .notification-system {
+        right: 1rem;
+        left: 1rem;
+    }
+    
+    .notification-toast {
+        max-width: none;
+    }
 }
 
-/* ===== UTILIDADES ===== */
+/* ===== UTILIDADES MEJORADAS ===== */
 .sr-only {
     position: absolute;
     width: 1px;
@@ -1253,4 +1413,43 @@ body {
 .event-card:hover .copy-hint,
 .list-event-item:hover .copy-hint {
     opacity: 1;
+}
+
+/* Skeleton loading para mejor experiencia */
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: var(--radius);
+}
+
+@keyframes loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Mejoras de impresión */
+@media print {
+    .app-header,
+    .control-panel,
+    .events-sidebar,
+    .modal-overlay,
+    .context-menu,
+    .notification-system {
+        display: none !important;
+    }
+    
+    .app-main {
+        padding: 0;
+    }
+    
+    .calendar-section,
+    .list-section {
+        box-shadow: none;
+        background: white;
+    }
 }
