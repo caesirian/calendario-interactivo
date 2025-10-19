@@ -1,4 +1,4 @@
-// script.js - VERSIÓN MEJORADA Y OPTIMIZADA
+// script.js - VERSIÓN COMPLETA CON TODAS LAS MEJORAS
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbznO3sH7_OBv_9A2xAtY0Kc2FdsuMUDg6k2nPdq_gmjKggNqgQiMoSalLVf95gtQqYl9Q/exec';
 
 // Variables globales
@@ -15,7 +15,7 @@ let currentContextEvent = null;
 let eventsCache = new Map();
 const LAZY_LOAD_RANGE = 45;
 const CACHE_TTL = 5 * 60 * 1000;
-const CACHE_SIZE_LIMIT = 50; // Límite de entradas en cache
+const CACHE_SIZE_LIMIT = 50;
 let currentRange = null;
 
 // Variables para gestos táctiles
@@ -27,6 +27,81 @@ const SWIPE_THRESHOLD = 50;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 3;
 const RECONNECT_DELAY = 3000;
+
+// Variables para búsqueda
+let searchTerm = '';
+let searchFilter = 'all';
+let searchResults = [];
+
+// Variables para vista semanal
+let currentWeekStart = new Date();
+
+// Rate limiting
+const requestQueue = new Map();
+const REQUEST_LIMIT = 10;
+const TIME_WINDOW = 60000;
+
+// ESQUEMA DE VALIDACIÓN COMPLETO
+const eventSchema = {
+    id: {
+        type: 'string',
+        required: false,
+        validate: (value) => !value || (typeof value === 'string' && value.length <= 50)
+    },
+    date: {
+        type: 'date',
+        required: true,
+        validate: (value) => isValidDate(value) && new Date(value) >= new Date().setHours(0,0,0,0)
+    },
+    time: {
+        type: 'time',
+        required: true,
+        validate: isValidTime
+    },
+    title: {
+        type: 'string',
+        required: true,
+        minLength: 1,
+        maxLength: 100,
+        validate: (value) => typeof value === 'string' && value.trim().length >= 1 && value.length <= 100
+    },
+    description: {
+        type: 'string',
+        required: false,
+        maxLength: 1000,
+        validate: (value) => !value || (typeof value === 'string' && value.length <= 1000)
+    },
+    location: {
+        type: 'string',
+        required: false,
+        maxLength: 200,
+        validate: (value) => !value || (typeof value === 'string' && value.length <= 200)
+    },
+    organizer: {
+        type: 'string',
+        required: false,
+        maxLength: 100,
+        validate: (value) => !value || (typeof value === 'string' && value.length <= 100)
+    },
+    guests: {
+        type: 'string',
+        required: false,
+        maxLength: 500,
+        validate: (value) => {
+            if (!value) return true;
+            if (typeof value !== 'string') return false;
+            if (value.length > 500) return false;
+            
+            const emails = value.split(',').map(email => email.trim());
+            return emails.every(email => email.length <= 254);
+        }
+    },
+    color: {
+        type: 'string',
+        required: false,
+        validate: (value) => !value || (typeof value === 'string' && /^#[0-9A-F]{6}$/i.test(value))
+    }
+};
 
 // INICIALIZACIÓN MEJORADA
 document.addEventListener('DOMContentLoaded', function() {
@@ -40,6 +115,9 @@ document.addEventListener('DOMContentLoaded', function() {
     setupTouchGestures();
     setupConnectionMonitoring();
     setupCacheCleanup();
+    setupSearchSystem();
+    setupRealTimeValidation();
+    initializeWeekView();
     
     checkConnection();
 });
@@ -65,6 +143,13 @@ function setupEventListeners() {
         // Navegación por teclado en calendario
         if (!isModalOpen && currentView === 'month') {
             handleKeyboardNavigation(e);
+        }
+        
+        // Atajo Ctrl+F para búsqueda
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.focus();
         }
     });
 
@@ -94,6 +179,8 @@ function setupEventListeners() {
         resizeTimeout = setTimeout(() => {
             if (currentView === 'month') {
                 renderCalendar();
+            } else if (currentView === 'week') {
+                renderWeekView();
             }
         }, 250);
     });
@@ -151,6 +238,62 @@ function setupCacheCleanup() {
     }, CACHE_TTL);
 }
 
+// CONFIGURAR SISTEMA DE BÚSQUEDA
+function setupSearchSystem() {
+    const searchInput = document.getElementById('searchInput');
+    const clearSearch = document.getElementById('clearSearch');
+    const searchFilterSelect = document.getElementById('searchFilter');
+
+    if (!searchInput || !clearSearch || !searchFilterSelect) return;
+
+    // Búsqueda en tiempo real con debouncing
+    let searchTimeout;
+    searchInput.addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            performSearch(e.target.value);
+        }, 300);
+    });
+
+    // Limpiar búsqueda
+    clearSearch.addEventListener('click', function() {
+        searchInput.value = '';
+        performSearch('');
+        searchInput.focus();
+    });
+
+    // Actualizar visibilidad del botón limpiar
+    searchInput.addEventListener('input', function() {
+        clearSearch.classList.toggle('visible', this.value.length > 0);
+    });
+
+    // Filtro de búsqueda
+    searchFilterSelect.addEventListener('change', function(e) {
+        searchFilter = e.target.value;
+        if (searchTerm) {
+            performSearch(searchTerm);
+        }
+    });
+}
+
+// CONFIGURAR VALIDACIÓN EN TIEMPO REAL
+function setupRealTimeValidation() {
+    const form = document.getElementById('eventForm');
+    if (!form) return;
+    
+    const inputs = form.querySelectorAll('input, textarea');
+    
+    inputs.forEach(input => {
+        input.addEventListener('blur', function() {
+            validateField(this);
+        });
+        
+        input.addEventListener('input', function() {
+            clearFieldValidation(this);
+        });
+    });
+}
+
 // LIMPIAR CACHE EXPIRADO
 function cleanupExpiredCache() {
     const now = Date.now();
@@ -176,6 +319,49 @@ function cleanupExpiredCache() {
     
     if (expiredCount > 0) {
         console.log(`🗑️ Limpiados ${expiredCount} elementos expirados del cache`);
+    }
+}
+
+// RATE LIMITING MEJORADO
+function checkRateLimit(endpoint) {
+    const now = Date.now();
+    const endpointRequests = requestQueue.get(endpoint) || [];
+    
+    // Limpiar requests antiguos
+    const recentRequests = endpointRequests.filter(time => now - time < TIME_WINDOW);
+    
+    if (recentRequests.length >= REQUEST_LIMIT) {
+        throw new Error('Límite de requests excedido. Por favor espera un momento.');
+    }
+    
+    // Agregar nuevo request
+    recentRequests.push(now);
+    requestQueue.set(endpoint, recentRequests);
+    
+    return true;
+}
+
+// LLAMADA API CON RATE LIMITING
+async function makeAPICall(url, options = {}) {
+    try {
+        checkRateLimit(url);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        return response;
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            throw new Error('Timeout de conexión');
+        }
+        throw error;
     }
 }
 
@@ -242,6 +428,8 @@ function setupColorPickerModern() {
     const colorInput = document.getElementById('eventColor');
     const colorName = document.getElementById('selectedColorName');
     
+    if (!colorPresets.length || !colorInput || !colorName) return;
+    
     colorPresets.forEach(preset => {
         preset.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -284,6 +472,7 @@ function setupColorPickerModern() {
 // CONFIGURAR GESTIÓN DE MODAL - MEJORADO
 function setupModalHandling() {
     const modal = document.getElementById('eventModal');
+    if (!modal) return;
     
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
@@ -292,9 +481,11 @@ function setupModalHandling() {
     });
     
     const modalContent = modal.querySelector('.modal-container');
-    modalContent.addEventListener('click', function(e) {
-        e.stopPropagation();
-    });
+    if (modalContent) {
+        modalContent.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    }
     
     // Enfoque automático mejorado
     modal.addEventListener('animationend', function() {
@@ -319,14 +510,7 @@ async function checkConnection() {
         const testUrl = GAS_WEB_APP_URL + '?action=test&timestamp=' + Date.now();
         console.log('📡 Test URL:', testUrl);
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(testUrl, {
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
+        const response = await makeAPICall(testUrl);
         
         console.log('📨 Response status:', response.status, response.type);
         
@@ -373,33 +557,11 @@ async function checkConnection() {
     }
 }
 
-// CAMBIAR VISTA - MEJORADO
-function changeView(view) {
-    if (currentView === view) return;
-    
-    currentView = view;
-    document.getElementById('viewSelector').value = view;
-    
-    if (view === 'month') {
-        document.getElementById('monthView').style.display = 'block';
-        document.getElementById('listView').style.display = 'none';
-        renderCalendar();
-    } else if (view === 'list') {
-        document.getElementById('monthView').style.display = 'none';
-        document.getElementById('listView').style.display = 'block';
-        renderListView();
-    }
-    
-    // Anunciar cambio para lectores de pantalla
-    announceToScreenReader(`Cambiado a vista ${view === 'month' ? 'mes' : 'lista'}`);
-}
-
 // ANUNCIAR A LECTORES DE PANTALLA
 function announceToScreenReader(message) {
     const announcer = document.getElementById('announcer') || createScreenReaderAnnouncer();
     announcer.textContent = message;
     
-    // Limpiar después de un tiempo
     setTimeout(() => {
         announcer.textContent = '';
     }, 3000);
@@ -413,6 +575,45 @@ function createScreenReaderAnnouncer() {
     announcer.setAttribute('aria-atomic', 'true');
     document.body.appendChild(announcer);
     return announcer;
+}
+
+// CAMBIAR VISTA - MEJORADO
+function changeView(view) {
+    if (currentView === view) return;
+    
+    currentView = view;
+    const viewSelector = document.getElementById('viewSelector');
+    if (viewSelector) viewSelector.value = view;
+    
+    // Ocultar todas las vistas
+    const monthView = document.getElementById('monthView');
+    const weekView = document.getElementById('weekView');
+    const listView = document.getElementById('listView');
+    
+    if (monthView) monthView.style.display = 'none';
+    if (weekView) weekView.style.display = 'none';
+    if (listView) listView.style.display = 'none';
+    
+    // Mostrar vista seleccionada
+    if (view === 'month') {
+        if (monthView) monthView.style.display = 'block';
+        renderCalendar();
+    } else if (view === 'week') {
+        if (weekView) weekView.style.display = 'block';
+        renderWeekView();
+    } else if (view === 'list') {
+        if (listView) listView.style.display = 'block';
+        renderListView();
+    }
+    
+    const viewNames = {
+        'month': 'mes',
+        'week': 'semana', 
+        'list': 'lista'
+    };
+    
+    showNotification(`📊 Cambiado a vista ${viewNames[view] || view}`, 'success');
+    announceToScreenReader(`Cambiado a vista ${viewNames[view] || view}`);
 }
 
 // LAZY LOADING - FUNCIÓN PRINCIPAL MEJORADA
@@ -429,6 +630,8 @@ async function loadEventsLazy(targetDate = null) {
             mergeEventsIntoCache(cached.events);
             if (currentView === 'month') {
                 renderCalendar();
+            } else if (currentView === 'week') {
+                renderWeekView();
             } else {
                 renderListView();
             }
@@ -445,7 +648,7 @@ async function loadEventsLazy(targetDate = null) {
         });
         
         console.log('📡 Solicitando eventos para rango:', range);
-        const response = await fetch(GAS_WEB_APP_URL + '?' + params.toString());
+        const response = await makeAPICall(GAS_WEB_APP_URL + '?' + params.toString());
         
         if (!response.ok) {
             throw new Error(`Error HTTP: ${response.status}`);
@@ -467,6 +670,8 @@ async function loadEventsLazy(targetDate = null) {
             
             if (currentView === 'month') {
                 renderCalendar();
+            } else if (currentView === 'week') {
+                renderWeekView();
             } else {
                 renderListView();
             }
@@ -561,7 +766,7 @@ async function loadEventsNormal() {
         showLoading(true);
         console.log('🔄 Intentando carga normal de eventos...');
         
-        const response = await fetch(GAS_WEB_APP_URL + '?action=getEvents&timestamp=' + Date.now());
+        const response = await makeAPICall(GAS_WEB_APP_URL + '?action=getEvents&timestamp=' + Date.now());
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
@@ -571,6 +776,8 @@ async function loadEventsNormal() {
             events = result.events || [];
             if (currentView === 'month') {
                 renderCalendar();
+            } else if (currentView === 'week') {
+                renderWeekView();
             } else {
                 renderListView();
             }
@@ -587,6 +794,165 @@ async function loadEventsNormal() {
     }
 }
 
+// VALIDACIÓN DE SCHEMA COMPLETO
+function validateEventData(eventData, schema) {
+    const errors = [];
+    const warnings = [];
+
+    for (const [field, rules] of Object.entries(schema)) {
+        const value = eventData[field];
+        const isValueProvided = value !== null && value !== undefined && value !== '';
+
+        // Validar campo requerido
+        if (rules.required && !isValueProvided) {
+            errors.push(`El campo "${field}" es obligatorio`);
+            continue;
+        }
+
+        // Si no hay valor y no es requerido, continuar
+        if (!isValueProvided) continue;
+
+        // Validar tipo de dato
+        if (rules.type === 'string' && typeof value !== 'string') {
+            errors.push(`El campo "${field}" debe ser texto`);
+            continue;
+        }
+
+        // Validaciones específicas
+        if (rules.validate && !rules.validate(value)) {
+            errors.push(`El campo "${field}" no es válido`);
+            continue;
+        }
+
+        // Validar longitud mínima
+        if (rules.minLength && value.length < rules.minLength) {
+            errors.push(`El campo "${field}" debe tener al menos ${rules.minLength} caracteres`);
+        }
+
+        // Validar longitud máxima
+        if (rules.maxLength && value.length > rules.maxLength) {
+            errors.push(`El campo "${field}" no puede tener más de ${rules.maxLength} caracteres`);
+        }
+
+        // Advertencias para datos sospechosos
+        if (field === 'title' && value.length < 3) {
+            warnings.push('El título es muy corto, considera agregar más detalles');
+        }
+
+        if (field === 'date') {
+            const eventDate = new Date(value);
+            const today = new Date();
+            const oneYearFromNow = new Date();
+            oneYearFromNow.setFullYear(today.getFullYear() + 1);
+
+            if (eventDate > oneYearFromNow) {
+                warnings.push('La fecha del evento es muy lejana (más de 1 año)');
+            }
+        }
+    }
+
+    // Validaciones cruzadas
+    if (eventData.date && eventData.time) {
+        const eventDateTime = new Date(`${eventData.date}T${eventData.time}`);
+        if (eventDateTime < new Date()) {
+            warnings.push('El evento está programado en el pasado');
+        }
+    }
+
+    return { isValid: errors.length === 0, errors, warnings };
+}
+
+// VALIDACIÓN DE CAMPO INDIVIDUAL
+function validateFieldValue(fieldName, value, rules) {
+    const errors = [];
+    const warnings = [];
+    const isValueProvided = value !== null && value !== undefined && value !== '';
+
+    if (rules.required && !isValueProvided) {
+        errors.push('Este campo es obligatorio');
+        return { isValid: false, errors, warnings };
+    }
+
+    if (!isValueProvided) {
+        return { isValid: true, errors, warnings };
+    }
+
+    if (rules.type === 'string' && typeof value !== 'string') {
+        errors.push('Debe ser texto');
+    }
+
+    if (rules.validate && !rules.validate(value)) {
+        errors.push('Formato inválido');
+    }
+
+    if (rules.minLength && value.length < rules.minLength) {
+        errors.push(`Mínimo ${rules.minLength} caracteres`);
+    }
+
+    if (rules.maxLength && value.length > rules.maxLength) {
+        errors.push(`Máximo ${rules.maxLength} caracteres`);
+    }
+
+    return { isValid: errors.length === 0, errors, warnings };
+}
+
+function validateField(field) {
+    const fieldName = field.id.replace('event', '').toLowerCase();
+    const value = field.value;
+    const rules = eventSchema[fieldName];
+    
+    if (!rules) return;
+    
+    const validation = validateFieldValue(fieldName, value, rules);
+    
+    if (!validation.isValid) {
+        showFieldError(field, validation.errors[0]);
+    } else if (validation.warnings.length > 0) {
+        showFieldWarning(field, validation.warnings[0]);
+    } else {
+        showFieldSuccess(field);
+    }
+}
+
+function showFieldError(field, message) {
+    clearFieldValidation(field);
+    field.style.borderColor = 'var(--danger)';
+    field.classList.add('error');
+    
+    const errorElement = document.createElement('div');
+    errorElement.className = 'field-error';
+    errorElement.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${message}`;
+    field.parentNode.appendChild(errorElement);
+}
+
+function showFieldWarning(field, message) {
+    clearFieldValidation(field);
+    field.style.borderColor = 'var(--warning)';
+    field.classList.add('warning');
+    
+    const warningElement = document.createElement('div');
+    warningElement.className = 'field-warning';
+    warningElement.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+    field.parentNode.appendChild(warningElement);
+}
+
+function showFieldSuccess(field) {
+    clearFieldValidation(field);
+    field.style.borderColor = 'var(--success)';
+    field.classList.add('success');
+}
+
+function clearFieldValidation(field) {
+    field.style.borderColor = '';
+    field.classList.remove('error', 'warning', 'success');
+    
+    const existingError = field.parentNode.querySelector('.field-error');
+    const existingWarning = field.parentNode.querySelector('.field-warning');
+    
+    if (existingError) existingError.remove();
+    if (existingWarning) existingWarning.remove();
+}
+
 // GUARDAR EVENTO - MEJORADO CON VALIDACIÓN Y SANITIZACIÓN
 async function saveEventFromForm() {
     if (isSaving) {
@@ -599,31 +965,39 @@ async function saveEventFromForm() {
         id: document.getElementById('editId').value,
         date: document.getElementById('eventDate').value,
         time: document.getElementById('eventTime').value,
-        title: sanitizeInput(document.getElementById('eventTitle').value),
-        description: sanitizeInput(document.getElementById('eventDescription').value),
-        location: sanitizeInput(document.getElementById('eventLocation').value),
-        organizer: sanitizeInput(document.getElementById('eventOrganizer').value),
-        guests: sanitizeInput(document.getElementById('eventGuests').value),
+        title: sanitizeInput(document.getElementById('eventTitle').value.trim()),
+        description: sanitizeInput(document.getElementById('eventDescription').value.trim()),
+        location: sanitizeInput(document.getElementById('eventLocation').value.trim()),
+        organizer: sanitizeInput(document.getElementById('eventOrganizer').value.trim()),
+        guests: sanitizeInput(document.getElementById('eventGuests').value.trim()),
         color: document.getElementById('eventColor').value
     };
     
-    // Validaciones mejoradas
-    if (!eventData.date || !isValidDate(eventData.date)) {
-        showNotification('❌ Fecha inválida o vacía', 'error');
-        document.getElementById('eventDate').focus();
+    // Validación completa
+    const validation = validateEventData(eventData, eventSchema);
+    
+    if (!validation.isValid) {
+        showNotification('❌ ' + validation.errors[0], 'error');
+        
+        // Enfocar el primer campo con error
+        const firstErrorField = Object.keys(eventSchema).find(field => 
+            validation.errors.some(error => error.includes(field))
+        );
+        if (firstErrorField) {
+            const fieldElement = document.getElementById(`event${firstErrorField.charAt(0).toUpperCase() + firstErrorField.slice(1)}`);
+            if (fieldElement) {
+                fieldElement.focus();
+                validateField(fieldElement);
+            }
+        }
+        
         return;
     }
     
-    if (!eventData.title || eventData.title.trim().length === 0) {
-        showNotification('❌ El título es obligatorio', 'error');
-        document.getElementById('eventTitle').focus();
-        return;
-    }
-    
-    if (eventData.time && !isValidTime(eventData.time)) {
-        showNotification('❌ Formato de hora inválido', 'error');
-        document.getElementById('eventTime').focus();
-        return;
+    // Mostrar advertencias si las hay
+    if (validation.warnings.length > 0) {
+        const proceed = confirm(`Advertencias:\n${validation.warnings.join('\n')}\n\n¿Continuar con el guardado?`);
+        if (!proceed) return;
     }
     
     try {
@@ -637,7 +1011,7 @@ async function saveEventFromForm() {
         
         console.log('💾 Guardando evento:', eventData);
         
-        const response = await fetch(GAS_WEB_APP_URL + '?' + params.toString());
+        const response = await makeAPICall(GAS_WEB_APP_URL + '?' + params.toString());
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
@@ -686,7 +1060,7 @@ async function deleteEvent() {
         
         console.log('🗑️ Eliminando evento ID:', eventId);
         
-        const response = await fetch(GAS_WEB_APP_URL + '?action=deleteEvent&id=' + eventId);
+        const response = await makeAPICall(GAS_WEB_APP_URL + '?action=deleteEvent&id=' + eventId);
         
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         
@@ -743,7 +1117,7 @@ function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
     
-    if (!calendar) return;
+    if (!calendar || !currentMonth) return;
     
     calendar.innerHTML = '';
     
@@ -843,10 +1217,261 @@ function renderCalendar() {
     }
 }
 
+// INICIALIZAR VISTA SEMANAL
+function initializeWeekView() {
+    currentWeekStart = getStartOfWeek(new Date());
+}
+
+// OBTENER INICIO DE SEMANA (Lunes)
+function getStartOfWeek(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
+}
+
+// RENDERIZAR VISTA SEMANAL
+function renderWeekView() {
+    const weekDaysHeader = document.querySelector('.week-days-header');
+    const weekGrid = document.getElementById('weekGrid');
+    const currentWeekElement = document.getElementById('currentWeek');
+    
+    if (!weekDaysHeader || !weekGrid || !currentWeekElement) return;
+    
+    // Actualizar título de la semana
+    const weekEnd = new Date(currentWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    
+    currentWeekElement.textContent = 
+        `Semana del ${formatShortDate(currentWeekStart)} al ${formatShortDate(weekEnd)}`;
+    
+    // Renderizar días de la semana
+    weekDaysHeader.innerHTML = '';
+    weekGrid.innerHTML = '';
+    
+    const today = new Date().toISOString().split('T')[0];
+    const currentDate = new Date(currentWeekStart);
+    
+    for (let i = 0; i < 7; i++) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const dayEvents = getEventsForDate(dateStr);
+        
+        // Header del día
+        const dayHeader = document.createElement('div');
+        dayHeader.className = 'week-day-header';
+        dayHeader.dataset.date = dateStr;
+        
+        if (dateStr === today) {
+            dayHeader.classList.add('today');
+        }
+        
+        dayHeader.innerHTML = `
+            <div class="week-day-name">${currentDate.toLocaleDateString('es-ES', { weekday: 'short' })}</div>
+            <div class="week-day-number">${currentDate.getDate()}</div>
+            ${dayEvents.length > 0 ? `<div class="week-day-events-count">${dayEvents.length}</div>` : ''}
+        `;
+        
+        dayHeader.addEventListener('click', () => selectWeekDay(dateStr, dayHeader));
+        weekDaysHeader.appendChild(dayHeader);
+        
+        // Columna del día
+        const dayColumn = document.createElement('div');
+        dayColumn.className = 'week-day-column';
+        dayColumn.dataset.date = dateStr;
+        
+        if (dateStr === today) {
+            dayColumn.classList.add('today');
+        }
+        
+        // Contenedor de eventos
+        const eventsContainer = document.createElement('div');
+        eventsContainer.className = 'week-events-container';
+        
+        // Slots de tiempo
+        const timeSlots = document.createElement('div');
+        timeSlots.className = 'week-time-slots';
+        
+        for (let hour = 7; hour <= 22; hour++) {
+            const timeSlot = document.createElement('div');
+            timeSlot.className = 'week-time-slot';
+            timeSlot.style.height = '60px';
+            
+            if (hour % 2 === 0) {
+                const timeLabel = document.createElement('div');
+                timeLabel.className = 'week-time-label';
+                timeLabel.textContent = `${hour.toString().padStart(2, '0')}:00`;
+                timeSlot.appendChild(timeLabel);
+            }
+            
+            timeSlots.appendChild(timeSlot);
+        }
+        
+        eventsContainer.appendChild(timeSlots);
+        
+        // Eventos del día
+        const displayedEvents = dayEvents.slice(0, 5);
+        const hasMoreEvents = dayEvents.length > 5;
+        
+        displayedEvents.forEach(event => {
+            const eventElement = createWeekEventElement(event, dateStr);
+            eventsContainer.appendChild(eventElement);
+        });
+        
+        if (hasMoreEvents) {
+            const moreEventsBtn = document.createElement('button');
+            moreEventsBtn.className = 'week-more-events';
+            moreEventsBtn.textContent = `+ ${dayEvents.length - 5} más`;
+            moreEventsBtn.addEventListener('click', () => showDayEventsModal(dateStr, dayEvents));
+            eventsContainer.appendChild(moreEventsBtn);
+        }
+        
+        dayColumn.appendChild(eventsContainer);
+        weekGrid.appendChild(dayColumn);
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+}
+
+// CREAR ELEMENTO DE EVENTO PARA VISTA SEMANAL
+function createWeekEventElement(event, dateStr) {
+    const eventElement = document.createElement('div');
+    eventElement.className = 'week-event';
+    eventElement.style.borderLeftColor = event.color || '#4facfe';
+    eventElement.title = `${event.title} - ${event.time}`;
+    
+    // Calcular posición basado en la hora
+    const [hours, minutes] = event.time.split(':').map(Number);
+    const startMinutes = hours * 60 + minutes;
+    const topPosition = ((startMinutes - 420) / 60) * 60; // 7:00 = 420 minutos
+    
+    eventElement.style.top = `${topPosition}px`;
+    eventElement.style.height = 'auto';
+    
+    // Compactar eventos que se solapan
+    const overlappingEvents = getOverlappingEvents(dateStr, event.time);
+    if (overlappingEvents.length > 2) {
+        eventElement.classList.add('compact');
+    }
+    
+    eventElement.innerHTML = `
+        <div class="week-event-time">${event.time}</div>
+        <div class="week-event-title">${event.title || 'Sin título'}</div>
+    `;
+    
+    eventElement.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editEventById(event.id);
+    });
+    
+    return eventElement;
+}
+
+// OBTENER EVENTOS QUE SE SOLAPAN
+function getOverlappingEvents(dateStr, time) {
+    const dayEvents = getEventsForDate(dateStr);
+    const [targetHours, targetMinutes] = time.split(':').map(Number);
+    const targetTime = targetHours * 60 + targetMinutes;
+    
+    return dayEvents.filter(otherEvent => {
+        const [otherHours, otherMinutes] = otherEvent.time.split(':').map(Number);
+        const otherTime = otherHours * 60 + otherMinutes;
+        return Math.abs(otherTime - targetTime) < 60;
+    });
+}
+
+// SELECCIONAR DÍA EN VISTA SEMANAL
+function selectWeekDay(dateStr, dayElement) {
+    // Limpiar selección anterior
+    document.querySelectorAll('.week-day-header.selected').forEach(el => {
+        el.classList.remove('selected');
+    });
+    document.querySelectorAll('.week-day-column.selected').forEach(el => {
+        el.classList.remove('selected');
+    });
+    
+    // Aplicar selección
+    dayElement.classList.add('selected');
+    const dayColumn = document.querySelector(`.week-day-column[data-date="${dateStr}"]`);
+    if (dayColumn) {
+        dayColumn.classList.add('selected');
+    }
+    
+    // Mostrar eventos del día
+    showDayEvents(dateStr);
+    showEventsList();
+}
+
+// CAMBIAR SEMANA
+function changeWeek(direction) {
+    currentWeekStart.setDate(currentWeekStart.getDate() + (direction * 7));
+    renderWeekView();
+    showNotification(`📅 Cambiada a semana del ${formatShortDate(currentWeekStart)}`, 'success');
+}
+
+// MODAL PARA MÁS EVENTOS
+function showDayEventsModal(dateStr, events) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-container" style="max-width: 600px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fas fa-calendar-day"></i>
+                    <h3>Eventos del ${formatEventDate(dateStr)}</h3>
+                </div>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="events-container">
+                    ${events.map(event => `
+                        <div class="event-card" 
+                             onclick="editEventById('${event.id}'); this.closest('.modal-overlay').remove()"
+                             style="border-left-color: ${event.color || '#4facfe'}">
+                            <div class="event-full-date">
+                                <i class="fas fa-clock"></i>
+                                ${event.time}
+                            </div>
+                            <div class="event-title">${event.title || 'Sin título'}</div>
+                            ${event.description ? `<div class="event-description">${event.description}</div>` : ''}
+                            <div class="event-details">
+                                ${event.location ? `<div><strong>Lugar:</strong> ${event.location}</div>` : ''}
+                                ${event.organizer ? `<div><strong>Organizador:</strong> ${event.organizer}</div>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
 // RENDERIZAR VISTA LISTA - MEJORADO
 function renderListView() {
     const container = document.getElementById('eventsListContainer');
     if (!container) return;
+    
+    // Si hay búsqueda activa, mostrar resultados
+    if (searchTerm && searchResults.length > 0) {
+        renderSearchResultsInList();
+        return;
+    }
     
     if (!events || events.length === 0) {
         container.innerHTML = `
@@ -927,6 +1552,196 @@ function renderListView() {
     }, 100);
 }
 
+// SISTEMA DE BÚSQUEDA
+function performSearch(term) {
+    searchTerm = term.toLowerCase().trim();
+    
+    if (!searchTerm) {
+        searchResults = [];
+        clearSearchResults();
+        return;
+    }
+
+    // Filtrar eventos basado en el término y filtro
+    searchResults = events.filter(event => {
+        if (!event) return false;
+
+        const searchableFields = {
+            all: [event.title, event.description, event.location, event.organizer, event.guests],
+            title: [event.title],
+            description: [event.description],
+            location: [event.location],
+            organizer: [event.organizer]
+        };
+
+        const fieldsToSearch = searchableFields[searchFilter] || searchableFields.all;
+        
+        return fieldsToSearch.some(field => 
+            field && field.toLowerCase().includes(searchTerm)
+        );
+    });
+
+    displaySearchResults();
+}
+
+// MOSTRAR RESULTADOS DE BÚSQUEDA
+function displaySearchResults() {
+    if (currentView === 'list') {
+        renderSearchResultsInList();
+    } else {
+        showSearchResultsModal();
+    }
+}
+
+// RENDERIZAR RESULTADOS EN VISTA LISTA
+function renderSearchResultsInList() {
+    const container = document.getElementById('eventsListContainer');
+    if (!container) return;
+    
+    if (searchResults.length === 0) {
+        container.innerHTML = `
+            <div class="no-results">
+                <i class="fas fa-search"></i>
+                <h3>No se encontraron resultados</h3>
+                <p>No hay eventos que coincidan con "${searchTerm}"</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="search-results-header">
+            <div class="search-results-info">
+                ${searchResults.length} resultado${searchResults.length !== 1 ? 's' : ''} para "${searchTerm}"
+            </div>
+            <div class="search-results-actions">
+                <button class="btn btn-secondary" onclick="clearSearch()">
+                    <i class="fas fa-times"></i>
+                    Limpiar búsqueda
+                </button>
+            </div>
+        </div>
+        <div class="events-list">
+            ${searchResults.map(event => `
+                <div class="list-event-item" 
+                     onclick="editEventById('${event.id}')"
+                     style="border-left-color: ${event.color || '#4facfe'}">
+                    <div class="list-event-date">
+                        ${formatEventDate(event.date)} - ${event.time}
+                    </div>
+                    <div class="list-event-title">${highlightSearchTerm(event.title || 'Sin título')}</div>
+                    <div class="list-event-details">
+                        ${event.location ? `<div><strong>Lugar:</strong> ${highlightSearchTerm(event.location)}</div>` : ''}
+                        ${event.organizer ? `<div><strong>Organizador:</strong> ${highlightSearchTerm(event.organizer)}</div>` : ''}
+                        ${event.description ? `<div>${highlightSearchTerm(event.description)}</div>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// RESALTAR TÉRMINOS DE BÚSQUEDA
+function highlightSearchTerm(text) {
+    if (!text || !searchTerm) return text;
+    
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    return text.replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
+// MODAL DE RESULTADOS DE BÚSQUEDA (para otras vistas)
+function showSearchResultsModal() {
+    if (searchResults.length === 0) {
+        showNotification(`No se encontraron resultados para "${searchTerm}"`, 'info');
+        return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-container" style="max-width: 800px;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <i class="fas fa-search"></i>
+                    <h3>Resultados de búsqueda</h3>
+                </div>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="search-results-header">
+                    <div class="search-results-info">
+                        ${searchResults.length} resultado${searchResults.length !== 1 ? 's' : ''} para "${searchTerm}"
+                    </div>
+                </div>
+                <div class="events-list">
+                    ${searchResults.map(event => `
+                        <div class="list-event-item" 
+                             onclick="editEventById('${event.id}'); this.closest('.modal-overlay').remove()"
+                             style="border-left-color: ${event.color || '#4facfe'}">
+                            <div class="list-event-date">
+                                ${formatEventDate(event.date)} - ${event.time}
+                            </div>
+                            <div class="list-event-title">${highlightSearchTerm(event.title || 'Sin título')}</div>
+                            <div class="list-event-details">
+                                ${event.location ? `<div><strong>Lugar:</strong> ${highlightSearchTerm(event.location)}</div>` : ''}
+                                ${event.organizer ? `<div><strong>Organizador:</strong> ${highlightSearchTerm(event.organizer)}</div>` : ''}
+                                ${event.description ? `<div>${highlightSearchTerm(event.description)}</div>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                    Cerrar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="changeView('list'); this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-list"></i>
+                    Ver en lista
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    
+    // Cerrar modal al hacer clic fuera
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+// LIMPIAR BÚSQUEDA
+function clearSearch() {
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    
+    if (searchInput) searchInput.value = '';
+    if (clearSearchBtn) clearSearchBtn.classList.remove('visible');
+    
+    searchTerm = '';
+    searchResults = [];
+    
+    if (currentView === 'list') {
+        renderListView();
+    } else {
+        showNotification('Búsqueda limpiada', 'success');
+    }
+}
+
+// LIMPIAR RESULTADOS DE BÚSQUEDA
+function clearSearchResults() {
+    if (currentView === 'list') {
+        renderListView();
+    }
+}
+
 // CONFIGURAR MENÚ CONTEXTUAL PARA DÍAS - MEJORADO
 function setupDayContextMenu(dayElement, dateStr) {
     let pressTimer;
@@ -993,6 +1808,8 @@ function showDayContextMenu(dateStr, e) {
     if (dayEvents.length === 0) return;
     
     const menu = document.getElementById('contextMenu');
+    if (!menu) return;
+    
     const rect = menu.getBoundingClientRect();
     
     // Asegurar que el menú no se salga de la pantalla
@@ -1016,6 +1833,8 @@ function showDayContextMenu(dateStr, e) {
 // MOSTRAR MENÚ CONTEXTUAL PARA EVENTOS
 function showEventContextMenu(event, e) {
     const menu = document.getElementById('contextMenu');
+    if (!menu) return;
+    
     const rect = menu.getBoundingClientRect();
     
     let x = e.clientX || e.touches[0].clientX;
@@ -1038,7 +1857,9 @@ function showEventContextMenu(event, e) {
 // OCULTAR MENÚ CONTEXTUAL
 function hideContextMenu() {
     const menu = document.getElementById('contextMenu');
-    menu.style.display = 'none';
+    if (menu) {
+        menu.style.display = 'none';
+    }
     currentContextEvent = null;
 }
 
@@ -1261,6 +2082,8 @@ function showEventModal(event = null) {
     const colorName = document.getElementById('selectedColorName');
     const dateInput = document.getElementById('eventDate');
     
+    if (!modal || !colorInput || !colorName || !dateInput) return;
+    
     document.body.style.overflow = 'hidden';
     isModalOpen = true;
     
@@ -1289,7 +2112,7 @@ function showEventModal(event = null) {
             colorName.textContent = 'Personalizado';
         }
         
-        deleteBtn.style.display = 'block';
+        if (deleteBtn) deleteBtn.style.display = 'block';
         
         console.log('📝 Modal configurado para editar evento ID:', event.id);
     } else {
@@ -1307,7 +2130,7 @@ function showEventModal(event = null) {
             colorName.textContent = defaultPreset.getAttribute('data-name');
         }
         
-        deleteBtn.style.display = 'none';
+        if (deleteBtn) deleteBtn.style.display = 'none';
         currentEditingEvent = null;
         
         console.log('🆕 Modal configurado para nuevo evento');
@@ -1326,7 +2149,9 @@ function showEventModal(event = null) {
 
 function closeEventModal() {
     const modal = document.getElementById('eventModal');
-    modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+    }
     document.body.style.overflow = 'auto';
     isModalOpen = false;
     currentEditingEvent = null;
@@ -1509,6 +2334,8 @@ function loadSampleData() {
     
     if (currentView === 'month') {
         renderCalendar();
+    } else if (currentView === 'week') {
+        renderWeekView();
     } else {
         renderListView();
     }
@@ -1518,6 +2345,7 @@ function loadSampleData() {
 
 // FUNCIONES GLOBALES
 window.changeMonth = changeMonth;
+window.changeWeek = changeWeek;
 window.changeView = changeView;
 window.closeEventModal = closeEventModal;
 window.deleteEvent = deleteEvent;
@@ -1530,3 +2358,4 @@ window.clearEventsCache = clearEventsCache;
 window.copyEventData = copyEventData;
 window.hideContextMenu = hideContextMenu;
 window.exportEvents = exportEvents;
+window.clearSearch = clearSearch;
