@@ -1,4 +1,4 @@
-// script.js - VERSIÓN FINAL COMPLETA
+// script.js - VERSIÓN MEJORADA Y OPTIMIZADA
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbznO3sH7_OBv_9A2xAtY0Kc2FdsuMUDg6k2nPdq_gmjKggNqgQiMoSalLVf95gtQqYl9Q/exec';
 
 // Variables globales
@@ -8,27 +8,43 @@ let selectedDate = null;
 let isModalOpen = false;
 let currentEditingEvent = null;
 let isSaving = false;
-let currentView = 'month'; // 'month' o 'list'
-let currentContextEvent = null; // Evento para menú contextual
+let currentView = 'month';
+let currentContextEvent = null;
 
-// Variables para Lazy Loading
+// Variables para Lazy Loading mejorado
 let eventsCache = new Map();
 const LAZY_LOAD_RANGE = 45;
 const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_SIZE_LIMIT = 50; // Límite de entradas en cache
 let currentRange = null;
 
-// INICIALIZACIÓN
+// Variables para gestos táctiles
+let touchStartX = 0;
+let touchStartY = 0;
+const SWIPE_THRESHOLD = 50;
+
+// Variables para monitoreo de conexión
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 3;
+const RECONNECT_DELAY = 3000;
+
+// INICIALIZACIÓN MEJORADA
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🎨 Iniciando calendario moderno...');
     console.log('🔗 URL del GAS:', GAS_WEB_APP_URL);
+    
     setupEventListeners();
     setupColorPickerModern();
     setupModalHandling();
     setupContextMenu();
+    setupTouchGestures();
+    setupConnectionMonitoring();
+    setupCacheCleanup();
+    
     checkConnection();
 });
 
-// CONFIGURAR EVENT LISTENERS
+// CONFIGURAR EVENT LISTENERS MEJORADO
 function setupEventListeners() {
     const eventForm = document.getElementById('eventForm');
     if (eventForm) {
@@ -37,6 +53,7 @@ function setupEventListeners() {
         });
     }
 
+    // Manejo de teclado mejorado
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && isModalOpen) {
             closeEventModal();
@@ -44,24 +61,182 @@ function setupEventListeners() {
         if (e.key === 'Escape') {
             hideContextMenu();
         }
+        
+        // Navegación por teclado en calendario
+        if (!isModalOpen && currentView === 'month') {
+            handleKeyboardNavigation(e);
+        }
     });
 
-    // Cerrar menú contextual al hacer clic fuera
+    // Cerrar menú contextual mejorado
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.context-menu') && !e.target.closest('.event-card') && !e.target.closest('.list-event-item') && !e.target.closest('.calendar-day')) {
+        if (!e.target.closest('.context-menu') && 
+            !e.target.closest('.event-card') && 
+            !e.target.closest('.list-event-item') && 
+            !e.target.closest('.calendar-day')) {
             hideContextMenu();
         }
     });
 
     // Prevenir menú contextual por defecto
     document.addEventListener('contextmenu', function(e) {
-        if (e.target.closest('.event-card') || e.target.closest('.list-event-item') || e.target.closest('.calendar-day')) {
+        if (e.target.closest('.event-card') || 
+            e.target.closest('.list-event-item') || 
+            e.target.closest('.calendar-day')) {
             e.preventDefault();
         }
     });
+
+    // Redimensionado con debouncing
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            if (currentView === 'month') {
+                renderCalendar();
+            }
+        }, 250);
+    });
 }
 
-// CONFIGURAR SELECTOR DE COLOR MODERNO
+// CONFIGURAR GESTOS TÁCTILES
+function setupTouchGestures() {
+    const calendar = document.getElementById('calendar');
+    if (!calendar) return;
+
+    calendar.addEventListener('touchstart', function(e) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    calendar.addEventListener('touchend', function(e) {
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        
+        const diffX = touchStartX - touchEndX;
+        const diffY = touchStartY - touchEndY;
+        
+        // Solo procesar si es principalmente horizontal
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > SWIPE_THRESHOLD) {
+            if (diffX > 0) {
+                changeMonth(1); // Deslizar izquierda -> siguiente mes
+            } else {
+                changeMonth(-1); // Deslizar derecha -> mes anterior
+            }
+        }
+    }, { passive: true });
+}
+
+// CONFIGURAR MONITOREO DE CONEXIÓN
+function setupConnectionMonitoring() {
+    window.addEventListener('online', async function() {
+        console.log('🔗 Conexión restaurada');
+        updateStatus('Conectando...', 'warning');
+        showNotification('🌐 Conexión restaurada - Sincronizando...', 'success');
+        
+        await checkConnection();
+    });
+
+    window.addEventListener('offline', function() {
+        console.log('⚠️ Sin conexión');
+        updateStatus('Sin conexión', 'error');
+        showNotification('⚠️ Sin conexión - Modo offline', 'error');
+    });
+}
+
+// CONFIGURAR LIMPIEZA AUTOMÁTICA DE CACHE
+function setupCacheCleanup() {
+    setInterval(() => {
+        cleanupExpiredCache();
+    }, CACHE_TTL);
+}
+
+// LIMPIAR CACHE EXPIRADO
+function cleanupExpiredCache() {
+    const now = Date.now();
+    let expiredCount = 0;
+    
+    for (let [key, value] of eventsCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+            eventsCache.delete(key);
+            expiredCount++;
+        }
+    }
+    
+    // Limitar tamaño del cache
+    if (eventsCache.size > CACHE_SIZE_LIMIT) {
+        const entries = Array.from(eventsCache.entries());
+        entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+        
+        const toRemove = entries.slice(0, eventsCache.size - CACHE_SIZE_LIMIT);
+        toRemove.forEach(([key]) => eventsCache.delete(key));
+        
+        console.log(`🗑️ Limpiados ${toRemove.length} elementos del cache por límite de tamaño`);
+    }
+    
+    if (expiredCount > 0) {
+        console.log(`🗑️ Limpiados ${expiredCount} elementos expirados del cache`);
+    }
+}
+
+// MANEJO DE NAVEGACIÓN POR TECLADO
+function handleKeyboardNavigation(e) {
+    if (!selectedDate) return;
+    
+    const current = new Date(selectedDate);
+    
+    switch(e.key) {
+        case 'ArrowLeft':
+            e.preventDefault();
+            current.setDate(current.getDate() - 1);
+            selectDate(current.toISOString().split('T')[0]);
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            current.setDate(current.getDate() + 1);
+            selectDate(current.toISOString().split('T')[0]);
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            current.setDate(current.getDate() - 7);
+            selectDate(current.toISOString().split('T')[0]);
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            current.setDate(current.getDate() + 7);
+            selectDate(current.toISOString().split('T')[0]);
+            break;
+        case 'n':
+        case 'N':
+            if (e.ctrlKey) {
+                e.preventDefault();
+                showEventModal();
+            }
+            break;
+    }
+}
+
+// SANITIZACIÓN DE INPUTS - MEJORA DE SEGURIDAD
+function sanitizeInput(input) {
+    if (typeof input !== 'string') return input;
+    
+    const div = document.createElement('div');
+    div.textContent = input;
+    return div.innerHTML;
+}
+
+// VALIDACIÓN DE FECHA MEJORADA
+function isValidDate(dateString) {
+    const date = new Date(dateString);
+    return !isNaN(date.getTime()) && dateString.match(/^\d{4}-\d{2}-\d{2}$/);
+}
+
+// VALIDACIÓN DE HORA MEJORADA
+function isValidTime(timeString) {
+    return timeString.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/);
+}
+
+// CONFIGURAR SELECTOR DE COLOR MODERNO - MEJORADO
 function setupColorPickerModern() {
     const colorPresets = document.querySelectorAll('.color-preset');
     const colorInput = document.getElementById('eventColor');
@@ -79,11 +254,21 @@ function setupColorPickerModern() {
             colorPresets.forEach(opt => opt.classList.remove('active'));
             this.classList.add('active');
         });
+        
+        // Soporte para teclado
+        preset.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.click();
+            }
+        });
     });
 
     colorInput.addEventListener('input', function() {
-        const hexColor = this.value;
-        const preset = Array.from(colorPresets).find(p => p.getAttribute('data-color') === hexColor);
+        const hexColor = this.value.toLowerCase();
+        const preset = Array.from(colorPresets).find(p => 
+            p.getAttribute('data-color').toLowerCase() === hexColor
+        );
         
         if (preset) {
             colorPresets.forEach(opt => opt.classList.remove('active'));
@@ -96,7 +281,7 @@ function setupColorPickerModern() {
     });
 }
 
-// CONFIGURAR GESTIÓN DE MODAL
+// CONFIGURAR GESTIÓN DE MODAL - MEJORADO
 function setupModalHandling() {
     const modal = document.getElementById('eventModal');
     
@@ -110,14 +295,22 @@ function setupModalHandling() {
     modalContent.addEventListener('click', function(e) {
         e.stopPropagation();
     });
+    
+    // Enfoque automático mejorado
+    modal.addEventListener('animationend', function() {
+        const titleInput = document.getElementById('eventTitle');
+        if (titleInput && modal.style.display === 'block') {
+            setTimeout(() => titleInput.focus(), 100);
+        }
+    });
 }
 
-// CONFIGURAR MENÚ CONTEXTUAL
+// CONFIGURAR MENÚ CONTEXTUAL - MEJORADO
 function setupContextMenu() {
-    // Event listeners para menú contextual se agregan dinámicamente
+    // Los event listeners se agregan dinámicamente
 }
 
-// VERIFICAR CONEXIÓN
+// VERIFICAR CONEXIÓN - MEJORADO CON REINTENTOS
 async function checkConnection() {
     try {
         showLoading(true);
@@ -126,7 +319,14 @@ async function checkConnection() {
         const testUrl = GAS_WEB_APP_URL + '?action=test&timestamp=' + Date.now();
         console.log('📡 Test URL:', testUrl);
         
-        const response = await fetch(testUrl);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(testUrl, {
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
         
         console.log('📨 Response status:', response.status, response.type);
         
@@ -140,6 +340,7 @@ async function checkConnection() {
         if (result.success) {
             updateStatus('Conectado', 'success');
             showNotification('✅ Conexión exitosa con Google Sheets', 'success');
+            reconnectAttempts = 0;
             await loadEventsLazy();
             preloadAdjacentMonths();
         } else {
@@ -147,17 +348,37 @@ async function checkConnection() {
         }
     } catch (error) {
         console.error('❌ Error de conexión:', error);
-        updateStatus('Sin conexión', 'error');
-        showNotification('❌ Error de conexión: ' + error.message, 'error');
-        loadSampleData();
+        
+        if (error.name === 'AbortError') {
+            updateStatus('Timeout', 'error');
+            showNotification('⏰ Timeout de conexión', 'error');
+        } else {
+            updateStatus('Sin conexión', 'error');
+            showNotification('❌ Error de conexión: ' + error.message, 'error');
+        }
+        
+        // Reintentar conexión
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            console.log(`🔄 Reintentando conexión (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+            
+            setTimeout(() => {
+                checkConnection();
+            }, RECONNECT_DELAY);
+        } else {
+            loadSampleData();
+        }
     } finally {
         showLoading(false);
     }
 }
 
-// CAMBIAR VISTA
+// CAMBIAR VISTA - MEJORADO
 function changeView(view) {
+    if (currentView === view) return;
+    
     currentView = view;
+    document.getElementById('viewSelector').value = view;
     
     if (view === 'month') {
         document.getElementById('monthView').style.display = 'block';
@@ -169,10 +390,32 @@ function changeView(view) {
         renderListView();
     }
     
-    showNotification(`📊 Cambiado a vista ${view === 'month' ? 'mes' : 'lista'}`, 'success');
+    // Anunciar cambio para lectores de pantalla
+    announceToScreenReader(`Cambiado a vista ${view === 'month' ? 'mes' : 'lista'}`);
 }
 
-// LAZY LOADING - FUNCIÓN PRINCIPAL
+// ANUNCIAR A LECTORES DE PANTALLA
+function announceToScreenReader(message) {
+    const announcer = document.getElementById('announcer') || createScreenReaderAnnouncer();
+    announcer.textContent = message;
+    
+    // Limpiar después de un tiempo
+    setTimeout(() => {
+        announcer.textContent = '';
+    }, 3000);
+}
+
+function createScreenReaderAnnouncer() {
+    const announcer = document.createElement('div');
+    announcer.id = 'announcer';
+    announcer.className = 'sr-only';
+    announcer.setAttribute('aria-live', 'polite');
+    announcer.setAttribute('aria-atomic', 'true');
+    document.body.appendChild(announcer);
+    return announcer;
+}
+
+// LAZY LOADING - FUNCIÓN PRINCIPAL MEJORADA
 async function loadEventsLazy(targetDate = null) {
     try {
         const dateToLoad = targetDate || currentDate;
@@ -244,7 +487,7 @@ async function loadEventsLazy(targetDate = null) {
     }
 }
 
-// RECARGAR EVENTOS DEL DÍA HASTA ACTUALIZAR
+// RECARGAR EVENTOS DEL DÍA HASTA ACTUALIZAR - MEJORADO
 async function reloadDayEventsUntilUpdated(date, maxAttempts = 5) {
     let attempts = 0;
     
@@ -252,12 +495,11 @@ async function reloadDayEventsUntilUpdated(date, maxAttempts = 5) {
         attempts++;
         console.log(`🔄 Recargando eventos del día (intento ${attempts}/${maxAttempts})`);
         
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         const dayEvents = getEventsForDate(date);
         showDayEvents(date);
         
-        // Verificar si los eventos están actualizados
         if (dayEvents.length > 0) {
             console.log('✅ Eventos del día actualizados correctamente');
             break;
@@ -283,9 +525,20 @@ function calculateLoadRange(centerDate) {
     };
 }
 
-// MEZCLAR EVENTOS EN CACHE
+// MEZCLAR EVENTOS EN CACHE - MEJORADO
 function mergeEventsIntoCache(newEvents) {
-    events = newEvents;
+    // Filtrar eventos duplicados
+    const existingIds = new Set(events.map(e => e.id));
+    const uniqueNewEvents = newEvents.filter(event => !existingIds.has(event.id));
+    
+    events = [...events, ...uniqueNewEvents];
+    
+    // Ordenar eventos por fecha
+    events.sort((a, b) => {
+        const dateCompare = new Date(a.date) - new Date(b.date);
+        if (dateCompare !== 0) return dateCompare;
+        return (a.time || '00:00').localeCompare(b.time || '00:00');
+    });
 }
 
 // PRECARGAR MESES ADYACENTES
@@ -302,7 +555,7 @@ function preloadAdjacentMonths() {
     }, 1000);
 }
 
-// CARGA NORMAL (fallback)
+// CARGA NORMAL (fallback) - MEJORADO
 async function loadEventsNormal() {
     try {
         showLoading(true);
@@ -334,27 +587,42 @@ async function loadEventsNormal() {
     }
 }
 
-// GUARDAR EVENTO - MEJORADO CON RECARGA AUTOMÁTICA
+// GUARDAR EVENTO - MEJORADO CON VALIDACIÓN Y SANITIZACIÓN
 async function saveEventFromForm() {
     if (isSaving) {
         console.log('⏳ Guardado ya en progreso...');
         return;
     }
     
+    // Obtener y sanitizar datos
     const eventData = {
         id: document.getElementById('editId').value,
         date: document.getElementById('eventDate').value,
         time: document.getElementById('eventTime').value,
-        title: document.getElementById('eventTitle').value,
-        description: document.getElementById('eventDescription').value,
-        location: document.getElementById('eventLocation').value,
-        organizer: document.getElementById('eventOrganizer').value,
-        guests: document.getElementById('eventGuests').value,
+        title: sanitizeInput(document.getElementById('eventTitle').value),
+        description: sanitizeInput(document.getElementById('eventDescription').value),
+        location: sanitizeInput(document.getElementById('eventLocation').value),
+        organizer: sanitizeInput(document.getElementById('eventOrganizer').value),
+        guests: sanitizeInput(document.getElementById('eventGuests').value),
         color: document.getElementById('eventColor').value
     };
     
-    if (!eventData.date || !eventData.title) {
-        showNotification('❌ Fecha y título son obligatorios', 'error');
+    // Validaciones mejoradas
+    if (!eventData.date || !isValidDate(eventData.date)) {
+        showNotification('❌ Fecha inválida o vacía', 'error');
+        document.getElementById('eventDate').focus();
+        return;
+    }
+    
+    if (!eventData.title || eventData.title.trim().length === 0) {
+        showNotification('❌ El título es obligatorio', 'error');
+        document.getElementById('eventTitle').focus();
+        return;
+    }
+    
+    if (eventData.time && !isValidTime(eventData.time)) {
+        showNotification('❌ Formato de hora inválido', 'error');
+        document.getElementById('eventTime').focus();
         return;
     }
     
@@ -380,10 +648,8 @@ async function saveEventFromForm() {
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
             
-            // Recargar eventos y esperar a que terminen
             await loadEventsLazy();
             
-            // Recargar eventos del día específico
             if (selectedDate) {
                 await reloadDayEventsUntilUpdated(selectedDate);
             }
@@ -401,7 +667,7 @@ async function saveEventFromForm() {
     }
 }
 
-// ELIMINAR EVENTO - MEJORADO CON RECARGA AUTOMÁTICA
+// ELIMINAR EVENTO - MEJORADO
 async function deleteEvent() {
     const eventId = document.getElementById('editId').value;
     
@@ -410,7 +676,7 @@ async function deleteEvent() {
         return;
     }
     
-    if (!confirm('¿Estás seguro de que quieres eliminar este evento?')) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este evento? Esta acción no se puede deshacer.')) {
         return;
     }
     
@@ -431,10 +697,8 @@ async function deleteEvent() {
             showNotification('✅ ' + result.message, 'success');
             closeEventModal();
             
-            // Recargar eventos y esperar a que terminen
             await loadEventsLazy();
             
-            // Recargar eventos del día específico
             if (selectedDate) {
                 await reloadDayEventsUntilUpdated(selectedDate);
             }
@@ -474,7 +738,7 @@ function formatShortDate(dateString) {
     return date.toLocaleDateString('es-ES', options);
 }
 
-// RENDERIZAR CALENDARIO
+// RENDERIZAR CALENDARIO - MEJORADO CON ACCESIBILIDAD
 function renderCalendar() {
     const calendar = document.getElementById('calendar');
     const currentMonth = document.getElementById('currentMonth');
@@ -500,6 +764,8 @@ function renderCalendar() {
     for (let i = startingDay - 1; i >= 0; i--) {
         const day = document.createElement('div');
         day.className = 'calendar-day other-month';
+        day.setAttribute('role', 'gridcell');
+        day.setAttribute('aria-disabled', 'true');
         day.innerHTML = `<div class="day-number">${prevMonthLastDay - i}</div>`;
         calendar.appendChild(day);
     }
@@ -513,11 +779,18 @@ function renderCalendar() {
         const dateStr = `${year}-${(month + 1).toString().padStart(2, '0')}-${i.toString().padStart(2, '0')}`;
         
         day.className = 'calendar-day';
-        day.innerHTML = `<div class="day-number">${i}</div>`;
+        day.setAttribute('role', 'gridcell');
+        day.setAttribute('aria-label', `Día ${i} de ${currentMonth.textContent}`);
         day.dataset.date = dateStr;
+        
+        const dayNumber = document.createElement('div');
+        dayNumber.className = 'day-number';
+        dayNumber.textContent = i;
+        day.appendChild(dayNumber);
         
         if (dateStr === todayStr) {
             day.classList.add('today');
+            day.setAttribute('aria-current', 'date');
         }
         
         const dayEvents = getEventsForDate(dateStr);
@@ -525,6 +798,7 @@ function renderCalendar() {
         if (dayEvents.length > 0) {
             const eventsIndicator = document.createElement('div');
             eventsIndicator.className = 'events-indicator';
+            eventsIndicator.setAttribute('aria-label', `${dayEvents.length} eventos`);
             
             dayEvents.slice(0, 3).forEach(event => {
                 const eventLine = document.createElement('div');
@@ -562,12 +836,14 @@ function renderCalendar() {
     for (let i = 1; i <= remainingCells; i++) {
         const day = document.createElement('div');
         day.className = 'calendar-day other-month';
+        day.setAttribute('role', 'gridcell');
+        day.setAttribute('aria-disabled', 'true');
         day.innerHTML = `<div class="day-number">${i}</div>`;
         calendar.appendChild(day);
     }
 }
 
-// RENDERIZAR VISTA LISTA
+// RENDERIZAR VISTA LISTA - MEJORADO
 function renderListView() {
     const container = document.getElementById('eventsListContainer');
     if (!container) return;
@@ -575,7 +851,7 @@ function renderListView() {
     if (!events || events.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-calendar-day"></i>
+                <i class="fas fa-calendar-day" aria-hidden="true"></i>
                 <p>No hay eventos para mostrar</p>
             </div>
         `;
@@ -607,11 +883,14 @@ function renderListView() {
         return `
             <div class="month-group">
                 <h3 class="month-title">${month}</h3>
-                <div class="events-list">
+                <div class="events-list" role="list">
                     ${monthEvents.map(event => `
                         <div class="list-event-item" 
                              onclick="editEventById('${event.id}')"
-                             style="border-left-color: ${event.color || '#4facfe'}">
+                             style="border-left-color: ${event.color || '#4facfe'}"
+                             role="listitem"
+                             tabindex="0"
+                             aria-label="Evento: ${event.title || 'Sin título'} el ${formatEventDate(event.date)} a las ${event.time}">
                             <div class="list-event-date">
                                 ${formatEventDate(event.date)} - ${event.time}
                             </div>
@@ -622,7 +901,7 @@ function renderListView() {
                                 ${event.description ? `<div>${event.description}</div>` : ''}
                             </div>
                             <div class="list-event-meta">
-                                ${event.guests ? `<span><i class="fas fa-users"></i> ${event.guests.split(',').length} invitados</span>` : ''}
+                                ${event.guests ? `<span><i class="fas fa-users" aria-hidden="true"></i> ${event.guests.split(',').length} invitados</span>` : ''}
                                 <span class="copy-hint">Mantén presionado para copiar</span>
                             </div>
                         </div>
@@ -632,15 +911,23 @@ function renderListView() {
         `;
     }).join('');
     
-    // Agregar event listeners para menú contextual a los elementos de lista
+    // Agregar event listeners para menú contextual
     setTimeout(() => {
         document.querySelectorAll('.list-event-item').forEach(item => {
             setupEventContextMenu(item);
+            
+            // Soporte para teclado
+            item.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    item.click();
+                }
+            });
         });
     }, 100);
 }
 
-// CONFIGURAR MENÚ CONTEXTUAL PARA DÍAS
+// CONFIGURAR MENÚ CONTEXTUAL PARA DÍAS - MEJORADO
 function setupDayContextMenu(dayElement, dateStr) {
     let pressTimer;
     
@@ -648,11 +935,15 @@ function setupDayContextMenu(dayElement, dateStr) {
         pressTimer = setTimeout(() => {
             showDayContextMenu(dateStr, e);
         }, 500);
-    });
+    }, { passive: true });
     
     dayElement.addEventListener('touchend', function() {
         clearTimeout(pressTimer);
-    });
+    }, { passive: true });
+    
+    dayElement.addEventListener('touchcancel', function() {
+        clearTimeout(pressTimer);
+    }, { passive: true });
     
     dayElement.addEventListener('contextmenu', function(e) {
         e.preventDefault();
@@ -660,30 +951,38 @@ function setupDayContextMenu(dayElement, dateStr) {
     });
 }
 
-// CONFIGURAR MENÚ CONTEXTUAL PARA EVENTOS
+// CONFIGURAR MENÚ CONTEXTUAL PARA EVENTOS - MEJORADO
 function setupEventContextMenu(eventElement) {
     let pressTimer;
     
     eventElement.addEventListener('touchstart', function(e) {
         pressTimer = setTimeout(() => {
-            const eventId = eventElement.onclick.toString().match(/'([^']+)'/)[1];
+            const eventId = eventElement.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+            if (eventId) {
+                const event = findEventById(eventId);
+                if (event) {
+                    showEventContextMenu(event, e);
+                }
+            }
+        }, 500);
+    }, { passive: true });
+    
+    eventElement.addEventListener('touchend', function() {
+        clearTimeout(pressTimer);
+    }, { passive: true });
+    
+    eventElement.addEventListener('touchcancel', function() {
+        clearTimeout(pressTimer);
+    }, { passive: true });
+    
+    eventElement.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        const eventId = eventElement.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+        if (eventId) {
             const event = findEventById(eventId);
             if (event) {
                 showEventContextMenu(event, e);
             }
-        }, 500);
-    });
-    
-    eventElement.addEventListener('touchend', function() {
-        clearTimeout(pressTimer);
-    });
-    
-    eventElement.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        const eventId = eventElement.onclick.toString().match(/'([^']+)'/)[1];
-        const event = findEventById(eventId);
-        if (event) {
-            showEventContextMenu(event, e);
         }
     });
 }
@@ -694,9 +993,22 @@ function showDayContextMenu(dateStr, e) {
     if (dayEvents.length === 0) return;
     
     const menu = document.getElementById('contextMenu');
+    const rect = menu.getBoundingClientRect();
+    
+    // Asegurar que el menú no se salga de la pantalla
+    let x = e.clientX || e.touches[0].clientX;
+    let y = e.clientY || e.touches[0].clientY;
+    
+    if (x + rect.width > window.innerWidth) {
+        x = window.innerWidth - rect.width - 10;
+    }
+    if (y + rect.height > window.innerHeight) {
+        y = window.innerHeight - rect.height - 10;
+    }
+    
     menu.style.display = 'block';
-    menu.style.left = e.clientX + 'px';
-    menu.style.top = e.clientY + 'px';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
     
     currentContextEvent = { date: dateStr, events: dayEvents };
 }
@@ -704,9 +1016,21 @@ function showDayContextMenu(dateStr, e) {
 // MOSTRAR MENÚ CONTEXTUAL PARA EVENTOS
 function showEventContextMenu(event, e) {
     const menu = document.getElementById('contextMenu');
+    const rect = menu.getBoundingClientRect();
+    
+    let x = e.clientX || e.touches[0].clientX;
+    let y = e.clientY || e.touches[0].clientY;
+    
+    if (x + rect.width > window.innerWidth) {
+        x = window.innerWidth - rect.width - 10;
+    }
+    if (y + rect.height > window.innerHeight) {
+        y = window.innerHeight - rect.height - 10;
+    }
+    
     menu.style.display = 'block';
-    menu.style.left = e.clientX + 'px';
-    menu.style.top = e.clientY + 'px';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
     
     currentContextEvent = event;
 }
@@ -718,7 +1042,7 @@ function hideContextMenu() {
     currentContextEvent = null;
 }
 
-// COPIAR INFORMACIÓN DEL EVENTO
+// COPIAR INFORMACIÓN DEL EVENTO - MEJORADO
 async function copyEventData() {
     if (!currentContextEvent) return;
     
@@ -752,7 +1076,20 @@ async function copyEventData() {
         hideContextMenu();
     } catch (err) {
         console.error('Error al copiar: ', err);
-        showNotification('❌ Error al copiar información', 'error');
+        // Fallback para navegadores antiguos
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showNotification('✅ Información copiada al portapapeles', 'success');
+        } catch (fallbackErr) {
+            console.error('Fallback copy failed: ', fallbackErr);
+            showNotification('❌ Error al copiar información', 'error');
+        }
+        document.body.removeChild(textArea);
+        hideContextMenu();
     }
 }
 
@@ -778,7 +1115,7 @@ function getEventsForDate(date) {
     return dayEvents;
 }
 
-// BUSCAR EVENTO POR ID
+// BUSCAR EVENTO POR ID - MEJORADO
 function findEventById(eventId) {
     if (!events || !Array.isArray(events)) {
         console.error('❌ No hay eventos cargados o array inválido');
@@ -794,20 +1131,32 @@ function findEventById(eventId) {
     return event;
 }
 
-// SELECCIONAR FECHA
-function selectDate(date, dayElement) {
+// SELECCIONAR FECHA - MEJORADO
+function selectDate(date, dayElement = null) {
     selectedDate = date;
     
     document.querySelectorAll('.calendar-day.selected').forEach(day => {
         day.classList.remove('selected');
     });
     
-    dayElement.classList.add('selected');
+    if (dayElement) {
+        dayElement.classList.add('selected');
+    } else {
+        // Encontrar el elemento del día si no se proporciona
+        const dayElem = document.querySelector(`.calendar-day[data-date="${date}"]`);
+        if (dayElem) {
+            dayElem.classList.add('selected');
+        }
+    }
+    
     showDayEvents(date);
     showEventsList();
+    
+    // Anunciar para lectores de pantalla
+    announceToScreenReader(`Seleccionado ${formatEventDate(date)}. ${getEventsForDate(date).length} eventos.`);
 }
 
-// MOSTRAR EVENTOS DEL DÍA - MEJORADO CON FORMATO LEGIBLE
+// MOSTRAR EVENTOS DEL DÍA - MEJORADO
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -817,7 +1166,7 @@ function showDayEvents(date) {
     if (dayEvents.length === 0) {
         eventsContainer.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-calendar-day"></i>
+                <i class="fas fa-calendar-day" aria-hidden="true"></i>
                 <p>No hay eventos para este día</p>
             </div>
         `;
@@ -827,9 +1176,12 @@ function showDayEvents(date) {
     eventsContainer.innerHTML = dayEvents.map(event => `
         <div class="event-card" 
              onclick="editEventById('${event.id}')" 
-             style="border-left-color: ${event.color || '#4facfe'}">
+             style="border-left-color: ${event.color || '#4facfe'}"
+             role="listitem"
+             tabindex="0"
+             aria-label="Evento: ${event.title || 'Sin título'} a las ${event.time}">
             <div class="event-full-date">
-                <i class="fas fa-calendar-day"></i>
+                <i class="fas fa-calendar-day" aria-hidden="true"></i>
                 ${formatEventDate(event.date)} - ${event.time}
             </div>
             <div class="event-title">${event.title || 'Sin título'}</div>
@@ -843,15 +1195,22 @@ function showDayEvents(date) {
         </div>
     `).join('');
     
-    // Agregar event listeners para menú contextual
+    // Agregar event listeners para menú contextual y teclado
     setTimeout(() => {
         document.querySelectorAll('.event-card').forEach(card => {
             setupEventContextMenu(card);
+            
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    card.click();
+                }
+            });
         });
     }, 100);
 }
 
-// EDITAR EVENTO POR ID
+// EDITAR EVENTO POR ID - MEJORADO
 function editEventById(eventId) {
     console.log('✏️ Editando evento ID:', eventId);
     
@@ -889,7 +1248,7 @@ function hideEventsList() {
     }
 }
 
-// MODAL DE EVENTOS
+// MODAL DE EVENTOS - MEJORADO
 function showEventModal(event = null) {
     if (!selectedDate && !event) {
         showNotification('Por favor, selecciona una fecha primero', 'error');
@@ -956,8 +1315,12 @@ function showEventModal(event = null) {
     
     modal.style.display = 'block';
     
+    // Enfoque mejorado
     setTimeout(() => {
-        document.getElementById('eventTitle').focus();
+        const titleInput = document.getElementById('eventTitle');
+        if (titleInput) {
+            titleInput.focus();
+        }
     }, 300);
 }
 
@@ -970,41 +1333,49 @@ function closeEventModal() {
     showModalLoading(false);
 }
 
-// CAMBIAR MES
+// CAMBIAR MES - MEJORADO
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
     loadEventsLazy();
     hideEventsList();
     selectedDate = null;
     preloadAdjacentMonths();
-    showNotification(`📅 Cambiado a ${currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}`, 'success');
+    
+    const monthName = currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    showNotification(`📅 Cambiado a ${monthName}`, 'success');
+    announceToScreenReader(`Cambiado a ${monthName}`);
 }
 
-// EXPORTAR EVENTOS
+// EXPORTAR EVENTOS - MEJORADO
 function exportEvents() {
     if (!events || events.length === 0) {
         showNotification('❌ No hay eventos para exportar', 'error');
         return;
     }
     
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + "Fecha,Hora,Título,Lugar,Organizador,Invitados,Descripción\n"
-        + events.map(event => 
-            `"${event.date}","${event.time}","${event.title}","${event.location}","${event.organizer}","${event.guests}","${event.description}"`
-        ).join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `eventos_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    showNotification('✅ Eventos exportados correctamente', 'success');
+    try {
+        const csvContent = "data:text/csv;charset=utf-8," 
+            + "Fecha,Hora,Título,Lugar,Organizador,Invitados,Descripción,Color\n"
+            + events.map(event => 
+                `"${event.date}","${event.time}","${event.title}","${event.location}","${event.organizer}","${event.guests}","${event.description}","${event.color}"`
+            ).join("\n");
+        
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `eventos_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification('✅ Eventos exportados correctamente', 'success');
+    } catch (error) {
+        console.error('Error exportando eventos:', error);
+        showNotification('❌ Error al exportar eventos', 'error');
+    }
 }
 
-// FUNCIONES AUXILIARES
+// FUNCIONES AUXILIARES MEJORADAS
 function updateStatus(message, type) {
     const statusDot = document.querySelector('.status-dot');
     const statusText = document.getElementById('statusText');
@@ -1013,6 +1384,13 @@ function updateStatus(message, type) {
         statusDot.style.background = 
             type === 'success' ? '#10b981' : 
             type === 'error' ? '#ef4444' : '#f59e0b';
+            
+        // Animación de pulso solo para estados de advertencia
+        if (type === 'warning') {
+            statusDot.style.animation = 'pulse 2s infinite';
+        } else {
+            statusDot.style.animation = 'none';
+        }
     }
 }
 
@@ -1022,6 +1400,9 @@ function showNotification(message, type) {
     
     notification.textContent = message;
     notification.className = `notification-toast ${type} show`;
+    
+    // Anunciar para lectores de pantalla
+    announceToScreenReader(message);
     
     setTimeout(() => {
         notification.classList.remove('show');
@@ -1039,7 +1420,7 @@ function showLoading(show) {
     }
 }
 
-// MOSTRAR LOADING EN MODAL
+// MOSTRAR LOADING EN MODAL MEJORADO
 function showModalLoading(show) {
     const saveBtn = document.querySelector('.btn-primary');
     const deleteBtn = document.getElementById('deleteBtn');
@@ -1048,11 +1429,13 @@ function showModalLoading(show) {
     if (show) {
         if (saveBtn) {
             saveBtn.disabled = true;
-            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Guardando...';
+            saveBtn.setAttribute('aria-label', 'Guardando evento...');
         }
         if (deleteBtn) {
             deleteBtn.disabled = true;
-            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Eliminando...';
+            deleteBtn.setAttribute('aria-label', 'Eliminando evento...');
         }
         if (cancelBtn) {
             cancelBtn.disabled = true;
@@ -1060,11 +1443,13 @@ function showModalLoading(show) {
     } else {
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="fas fa-save"></i> Guardar Evento';
+            saveBtn.innerHTML = '<i class="fas fa-save" aria-hidden="true"></i> Guardar Evento';
+            saveBtn.setAttribute('aria-label', 'Guardar evento');
         }
         if (deleteBtn) {
             deleteBtn.disabled = false;
-            deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Eliminar';
+            deleteBtn.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i> Eliminar';
+            deleteBtn.setAttribute('aria-label', 'Eliminar evento');
         }
         if (cancelBtn) {
             cancelBtn.disabled = false;
@@ -1078,10 +1463,14 @@ function clearEventsCache() {
     console.log('🗑️ Cache de eventos limpiado');
 }
 
-// DATOS DE EJEMPLO
+// DATOS DE EJEMPLO MEJORADOS
 function loadSampleData() {
     console.log('📋 Cargando datos de ejemplo...');
     const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    
     events = [
         {
             id: 1,
@@ -1104,6 +1493,17 @@ function loadSampleData() {
             organizer: 'Ana García',
             guests: 'cliente@empresa.com',
             color: '#43e97b'
+        },
+        {
+            id: 3,
+            date: tomorrowStr,
+            time: '16:00',
+            title: 'Entrevista de trabajo',
+            description: 'Entrevista con candidato para puesto de desarrollador',
+            location: 'Sala de Conferencias B',
+            organizer: 'Carlos López',
+            guests: 'candidato@ejemplo.com',
+            color: '#fa709a'
         }
     ];
     
