@@ -9,6 +9,7 @@
     <title>Calendario Moderno | Gestor de Eventos</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
 </head>
 <body>
     <div class="app-container">
@@ -41,7 +42,7 @@
                     <button class="nav-btn" onclick="changeMonth(-1)" aria-label="Mes anterior">
                         <i class="fas fa-chevron-left" aria-hidden="true"></i>
                     </button>
-                    <h2 class="current-month" id="currentMonth" aria-live="polite"></h2>
+                    <h2 class="current-month" id="currentMonth"></h2>
                     <button class="nav-btn" onclick="changeMonth(1)" aria-label="Mes siguiente">
                         <i class="fas fa-chevron-right" aria-hidden="true"></i>
                     </button>
@@ -50,6 +51,7 @@
                 <div class="view-controls">
                     <select id="viewSelector" class="view-selector" onchange="changeView(this.value)" aria-label="Seleccionar vista">
                         <option value="month">Vista Mes</option>
+                        <option value="week">Vista Semana</option>
                         <option value="list">Vista Lista</option>
                     </select>
                     
@@ -57,6 +59,27 @@
                         <i class="fas fa-plus" aria-hidden="true"></i>
                         <span>Nuevo Evento</span>
                     </button>
+                </div>
+            </section>
+
+            <!-- Sistema de Búsqueda -->
+            <section class="search-container" aria-label="Buscar eventos">
+                <div class="search-box">
+                    <i class="fas fa-search search-icon" aria-hidden="true"></i>
+                    <input type="text" id="searchInput" placeholder="Buscar eventos..." 
+                           aria-label="Buscar eventos por título, descripción o lugar">
+                    <button class="clear-search" id="clearSearch" aria-label="Limpiar búsqueda">
+                        <i class="fas fa-times" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="search-filters">
+                    <select id="searchFilter" aria-label="Filtrar búsqueda por">
+                        <option value="all">Todo</option>
+                        <option value="title">Título</option>
+                        <option value="description">Descripción</option>
+                        <option value="location">Lugar</option>
+                        <option value="organizer">Organizador</option>
+                    </select>
                 </div>
             </section>
 
@@ -80,6 +103,25 @@
                     </div>
                 </div>
                 <div class="calendar-grid" id="calendar" role="grid" aria-label="Días del mes"></div>
+            </section>
+
+            <!-- Vista Semana -->
+            <section class="week-section" id="weekView" style="display: none;" aria-label="Vista semanal de eventos">
+                <div class="week-header">
+                    <button class="nav-btn" onclick="changeWeek(-1)" aria-label="Semana anterior">
+                        <i class="fas fa-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <h3 class="current-week" id="currentWeek"></h3>
+                    <button class="nav-btn" onclick="changeWeek(1)" aria-label="Semana siguiente">
+                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="week-days-header">
+                    <!-- Días generados dinámicamente -->
+                </div>
+                <div class="week-grid" id="weekGrid">
+                    <!-- Eventos generados dinámicamente -->
+                </div>
             </section>
 
             <!-- Vista Lista -->
@@ -254,5 +296,39 @@
     </div>
 
     <script src="script.js"></script>
+    <script>
+        // Registrar Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('✅ ServiceWorker registrado: ', registration.scope);
+                        
+                        // Verificar actualizaciones
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            console.log('🔄 Nuevo Service Worker encontrado');
+                            
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('📦 Nueva versión disponible');
+                                    showNotification('¡Nueva versión disponible! Recarga la página.', 'info');
+                                }
+                            });
+                        });
+                    })
+                    .catch(function(error) {
+                        console.log('❌ Error registrando ServiceWorker: ', error);
+                    });
+            });
+
+            // Escuchar cambios de conexión
+            navigator.serviceWorker.addEventListener('message', event => {
+                if (event.data && event.data.type === 'OFFLINE_STATUS') {
+                    updateStatus(event.data.status, event.data.isOnline ? 'success' : 'error');
+                }
+            });
+        }
+    </script>
 </body>
 </html>
