@@ -1,4 +1,4 @@
-// script.js - VERSIÓN COMPLETA CON TODAS LAS MEJORAS
+// script.js - VERSIÓN CORREGIDA
 const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbznO3sH7_OBv_9A2xAtY0Kc2FdsuMUDg6k2nPdq_gmjKggNqgQiMoSalLVf95gtQqYl9Q/exec';
 
 // Variables globales
@@ -131,6 +131,22 @@ function setupEventListeners() {
         });
     }
 
+    // CORRECCIÓN: Mejor manejo del cierre del modal
+    document.addEventListener('click', function(e) {
+        // Cerrar modal al hacer clic fuera
+        if (isModalOpen && e.target.id === 'eventModal') {
+            closeEventModal();
+        }
+        
+        // Cerrar menú contextual al hacer clic fuera
+        if (!e.target.closest('.context-menu') && 
+            !e.target.closest('.event-card') && 
+            !e.target.closest('.list-event-item') && 
+            !e.target.closest('.calendar-day')) {
+            hideContextMenu();
+        }
+    });
+
     // Manejo de teclado mejorado
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && isModalOpen) {
@@ -150,16 +166,6 @@ function setupEventListeners() {
             e.preventDefault();
             const searchInput = document.getElementById('searchInput');
             if (searchInput) searchInput.focus();
-        }
-    });
-
-    // Cerrar menú contextual mejorado
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.context-menu') && 
-            !e.target.closest('.event-card') && 
-            !e.target.closest('.list-event-item') && 
-            !e.target.closest('.calendar-day')) {
-            hideContextMenu();
         }
     });
 
@@ -411,10 +417,29 @@ function sanitizeInput(input) {
     return div.innerHTML;
 }
 
-// VALIDACIÓN DE FECHA MEJORADA
+// CORRECCIÓN: Validación de fecha mejorada con manejo de zona horaria
 function isValidDate(dateString) {
-    const date = new Date(dateString);
+    if (!dateString) return false;
+    
+    // Manejar diferentes formatos de fecha
+    const date = parseDate(dateString);
     return !isNaN(date.getTime()) && dateString.match(/^\d{4}-\d{2}-\d{2}$/);
+}
+
+// CORRECCIÓN: Parsear fecha considerando zona horaria
+function parseDate(dateString) {
+    // Si ya es una fecha válida, retornarla
+    if (dateString instanceof Date && !isNaN(dateString.getTime())) {
+        return dateString;
+    }
+    
+    // Para formato YYYY-MM-DD, agregar tiempo para evitar problemas de zona horaria
+    if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return new Date(dateString + 'T12:00:00'); // Usar mediodía para evitar cambios de día por zona horaria
+    }
+    
+    // Intentar parsear como fecha normal
+    return new Date(dateString);
 }
 
 // VALIDACIÓN DE HORA MEJORADA
@@ -469,11 +494,21 @@ function setupColorPickerModern() {
     });
 }
 
-// CONFIGURAR GESTIÓN DE MODAL - MEJORADO
+// CORRECCIÓN: Configuración mejorada del modal
 function setupModalHandling() {
     const modal = document.getElementById('eventModal');
     if (!modal) return;
     
+    // CORRECCIÓN: Cerrar modal al hacer clic en la X
+    const closeButton = modal.querySelector('.modal-close');
+    if (closeButton) {
+        closeButton.addEventListener('click', function(e) {
+            e.stopPropagation();
+            closeEventModal();
+        });
+    }
+    
+    // Cerrar modal al hacer clic fuera
     modal.addEventListener('click', function(e) {
         if (e.target === modal) {
             closeEventModal();
@@ -600,6 +635,8 @@ function changeView(view) {
         renderCalendar();
     } else if (view === 'week') {
         if (weekView) weekView.style.display = 'block';
+        // CORRECCIÓN: Inicializar semana basada en el mes actual
+        currentWeekStart = getStartOfWeek(new Date(currentDate));
         renderWeekView();
     } else if (view === 'list') {
         if (listView) listView.style.display = 'block';
@@ -658,15 +695,22 @@ async function loadEventsLazy(targetDate = null) {
         
         if (result.success) {
             const loadedEvents = result.events || [];
+            
+            // CORRECCIÓN: Procesar fechas para evitar problema de zona horaria
+            const processedEvents = loadedEvents.map(event => ({
+                ...event,
+                date: normalizeDate(event.date) // Normalizar fecha
+            }));
+            
             eventsCache.set(cacheKey, {
-                events: loadedEvents,
+                events: processedEvents,
                 timestamp: Date.now()
             });
             
-            mergeEventsIntoCache(loadedEvents);
+            mergeEventsIntoCache(processedEvents);
             currentRange = range;
             
-            console.log('✅ Eventos cargados (Lazy Loading):', loadedEvents.length, 'eventos');
+            console.log('✅ Eventos cargados (Lazy Loading):', processedEvents.length, 'eventos');
             
             if (currentView === 'month') {
                 renderCalendar();
@@ -690,6 +734,20 @@ async function loadEventsLazy(targetDate = null) {
     } finally {
         showLoading(false);
     }
+}
+
+// CORRECCIÓN: Normalizar fecha para evitar problemas de zona horaria
+function normalizeDate(dateString) {
+    if (!dateString) return '';
+    
+    // Si ya está en formato YYYY-MM-DD, retornar tal cual
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return dateString;
+    }
+    
+    // Parsear y formatear a YYYY-MM-DD
+    const date = parseDate(dateString);
+    return date.toISOString().split('T')[0];
 }
 
 // RECARGAR EVENTOS DEL DÍA HASTA ACTUALIZAR - MEJORADO
@@ -773,7 +831,12 @@ async function loadEventsNormal() {
         const result = await response.json();
         
         if (result.success) {
-            events = result.events || [];
+            // CORRECCIÓN: Normalizar fechas
+            events = (result.events || []).map(event => ({
+                ...event,
+                date: normalizeDate(event.date)
+            }));
+            
             if (currentView === 'month') {
                 renderCalendar();
             } else if (currentView === 'week') {
@@ -1090,24 +1153,26 @@ async function deleteEvent() {
     }
 }
 
-// FORMATEAR FECHA LEGIBLE
+// CORRECCIÓN: Formatear fecha considerando zona horaria local
 function formatEventDate(dateString) {
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
     const options = { 
         weekday: 'long', 
         year: 'numeric', 
         month: 'long', 
-        day: 'numeric' 
+        day: 'numeric',
+        timeZone: 'UTC' // Usar UTC para evitar cambios de día
     };
     return date.toLocaleDateString('es-ES', options);
 }
 
 // FORMATEAR FECHA CORTA
 function formatShortDate(dateString) {
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
     const options = { 
         day: 'numeric', 
-        month: 'short'
+        month: 'short',
+        timeZone: 'UTC'
     };
     return date.toLocaleDateString('es-ES', options);
 }
@@ -1222,7 +1287,7 @@ function initializeWeekView() {
     currentWeekStart = getStartOfWeek(new Date());
 }
 
-// OBTENER INICIO DE SEMANA (Lunes)
+// CORRECCIÓN: Obtener inicio de semana basado en el mes actual
 function getStartOfWeek(date) {
     const d = new Date(date);
     const day = d.getDay();
@@ -1230,7 +1295,7 @@ function getStartOfWeek(date) {
     return new Date(d.setDate(diff));
 }
 
-// RENDERIZAR VISTA SEMANAL
+// CORRECCIÓN: Renderizar vista semanal mejorada
 function renderWeekView() {
     const weekDaysHeader = document.querySelector('.week-days-header');
     const weekGrid = document.getElementById('weekGrid');
@@ -1238,12 +1303,20 @@ function renderWeekView() {
     
     if (!weekDaysHeader || !weekGrid || !currentWeekElement) return;
     
-    // Actualizar título de la semana
+    // CORRECCIÓN: Actualizar título de la semana basado en el mes actual
     const weekEnd = new Date(currentWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 6);
     
-    currentWeekElement.textContent = 
-        `Semana del ${formatShortDate(currentWeekStart)} al ${formatShortDate(weekEnd)}`;
+    const weekStartMonth = currentWeekStart.toLocaleDateString('es-ES', { month: 'long' });
+    const weekEndMonth = weekEnd.toLocaleDateString('es-ES', { month: 'long' });
+    
+    if (weekStartMonth === weekEndMonth) {
+        currentWeekElement.textContent = 
+            `Semana del ${formatShortDate(currentWeekStart)} al ${formatShortDate(weekEnd)} de ${weekStartMonth}`;
+    } else {
+        currentWeekElement.textContent = 
+            `Semana del ${formatShortDate(currentWeekStart)} de ${weekStartMonth} al ${formatShortDate(weekEnd)} de ${weekEndMonth}`;
+    }
     
     // Renderizar días de la semana
     weekDaysHeader.innerHTML = '';
@@ -1283,46 +1356,21 @@ function renderWeekView() {
             dayColumn.classList.add('today');
         }
         
-        // Contenedor de eventos
+        // Contenedor de eventos - CORRECCIÓN: Usar lista en lugar de posicionamiento absoluto
         const eventsContainer = document.createElement('div');
-        eventsContainer.className = 'week-events-container';
-        
-        // Slots de tiempo
-        const timeSlots = document.createElement('div');
-        timeSlots.className = 'week-time-slots';
-        
-        for (let hour = 7; hour <= 22; hour++) {
-            const timeSlot = document.createElement('div');
-            timeSlot.className = 'week-time-slot';
-            timeSlot.style.height = '60px';
-            
-            if (hour % 2 === 0) {
-                const timeLabel = document.createElement('div');
-                timeLabel.className = 'week-time-label';
-                timeLabel.textContent = `${hour.toString().padStart(2, '0')}:00`;
-                timeSlot.appendChild(timeLabel);
-            }
-            
-            timeSlots.appendChild(timeSlot);
-        }
-        
-        eventsContainer.appendChild(timeSlots);
+        eventsContainer.className = 'week-events-list'; // Nueva clase para lista
         
         // Eventos del día
-        const displayedEvents = dayEvents.slice(0, 5);
-        const hasMoreEvents = dayEvents.length > 5;
-        
-        displayedEvents.forEach(event => {
-            const eventElement = createWeekEventElement(event, dateStr);
-            eventsContainer.appendChild(eventElement);
-        });
-        
-        if (hasMoreEvents) {
-            const moreEventsBtn = document.createElement('button');
-            moreEventsBtn.className = 'week-more-events';
-            moreEventsBtn.textContent = `+ ${dayEvents.length - 5} más`;
-            moreEventsBtn.addEventListener('click', () => showDayEventsModal(dateStr, dayEvents));
-            eventsContainer.appendChild(moreEventsBtn);
+        if (dayEvents.length > 0) {
+            dayEvents.forEach(event => {
+                const eventElement = createWeekEventElement(event);
+                eventsContainer.appendChild(eventElement);
+            });
+        } else {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'week-empty-message';
+            emptyMessage.textContent = 'No hay eventos';
+            eventsContainer.appendChild(emptyMessage);
         }
         
         dayColumn.appendChild(eventsContainer);
@@ -1332,51 +1380,28 @@ function renderWeekView() {
     }
 }
 
-// CREAR ELEMENTO DE EVENTO PARA VISTA SEMANAL
-function createWeekEventElement(event, dateStr) {
+// CORRECCIÓN: Crear elemento de evento para vista semanal (lista)
+function createWeekEventElement(event) {
     const eventElement = document.createElement('div');
-    eventElement.className = 'week-event';
+    eventElement.className = 'week-event-item';
     eventElement.style.borderLeftColor = event.color || '#4facfe';
-    eventElement.title = `${event.title} - ${event.time}`;
-    
-    // Calcular posición basado en la hora
-    const [hours, minutes] = event.time.split(':').map(Number);
-    const startMinutes = hours * 60 + minutes;
-    const topPosition = ((startMinutes - 420) / 60) * 60; // 7:00 = 420 minutos
-    
-    eventElement.style.top = `${topPosition}px`;
-    eventElement.style.height = 'auto';
-    
-    // Compactar eventos que se solapan
-    const overlappingEvents = getOverlappingEvents(dateStr, event.time);
-    if (overlappingEvents.length > 2) {
-        eventElement.classList.add('compact');
-    }
     
     eventElement.innerHTML = `
         <div class="week-event-time">${event.time}</div>
         <div class="week-event-title">${event.title || 'Sin título'}</div>
+        <button class="week-event-edit-btn" onclick="editEventById('${event.id}')" aria-label="Editar evento">
+            <i class="fas fa-edit"></i>
+        </button>
     `;
     
+    // CORRECCIÓN: No editar directamente al hacer clic en el evento
     eventElement.addEventListener('click', (e) => {
-        e.stopPropagation();
-        editEventById(event.id);
+        if (!e.target.closest('.week-event-edit-btn')) {
+            eventElement.classList.toggle('expanded');
+        }
     });
     
     return eventElement;
-}
-
-// OBTENER EVENTOS QUE SE SOLAPAN
-function getOverlappingEvents(dateStr, time) {
-    const dayEvents = getEventsForDate(dateStr);
-    const [targetHours, targetMinutes] = time.split(':').map(Number);
-    const targetTime = targetHours * 60 + targetMinutes;
-    
-    return dayEvents.filter(otherEvent => {
-        const [otherHours, otherMinutes] = otherEvent.time.split(':').map(Number);
-        const otherTime = otherHours * 60 + otherMinutes;
-        return Math.abs(otherTime - targetTime) < 60;
-    });
 }
 
 // SELECCIONAR DÍA EN VISTA SEMANAL
@@ -1401,65 +1426,24 @@ function selectWeekDay(dateStr, dayElement) {
     showEventsList();
 }
 
-// CAMBIAR SEMANA
+// CORRECCIÓN: Cambiar semana respetando el mes actual
 function changeWeek(direction) {
     currentWeekStart.setDate(currentWeekStart.getDate() + (direction * 7));
+    
+    // CORRECCIÓN: Actualizar currentDate para mantener consistencia
+    const newMonth = currentWeekStart.getMonth();
+    const currentMonth = currentDate.getMonth();
+    
+    if (newMonth !== currentMonth) {
+        currentDate = new Date(currentWeekStart);
+        currentDate.setDate(1); // Ir al primer día del mes
+    }
+    
     renderWeekView();
-    showNotification(`📅 Cambiada a semana del ${formatShortDate(currentWeekStart)}`, 'success');
-}
-
-// MODAL PARA MÁS EVENTOS
-function showDayEventsModal(dateStr, events) {
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.style.display = 'block';
-    modal.innerHTML = `
-        <div class="modal-container" style="max-width: 600px;">
-            <div class="modal-header">
-                <div class="modal-title">
-                    <i class="fas fa-calendar-day"></i>
-                    <h3>Eventos del ${formatEventDate(dateStr)}</h3>
-                </div>
-                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="events-container">
-                    ${events.map(event => `
-                        <div class="event-card" 
-                             onclick="editEventById('${event.id}'); this.closest('.modal-overlay').remove()"
-                             style="border-left-color: ${event.color || '#4facfe'}">
-                            <div class="event-full-date">
-                                <i class="fas fa-clock"></i>
-                                ${event.time}
-                            </div>
-                            <div class="event-title">${event.title || 'Sin título'}</div>
-                            ${event.description ? `<div class="event-description">${event.description}</div>` : ''}
-                            <div class="event-details">
-                                ${event.location ? `<div><strong>Lugar:</strong> ${event.location}</div>` : ''}
-                                ${event.organizer ? `<div><strong>Organizador:</strong> ${event.organizer}</div>` : ''}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">
-                    <i class="fas fa-times"></i>
-                    Cerrar
-                </button>
-            </div>
-        </div>
-    `;
     
-    document.body.appendChild(modal);
-    
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
+    const weekEnd = new Date(currentWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    showNotification(`📅 Cambiada a semana del ${formatShortDate(currentWeekStart)} al ${formatShortDate(weekEnd)}`, 'success');
 }
 
 // RENDERIZAR VISTA LISTA - MEJORADO
@@ -1486,7 +1470,7 @@ function renderListView() {
     // Agrupar eventos por mes
     const eventsByMonth = {};
     events.forEach(event => {
-        const date = new Date(event.date);
+        const date = parseDate(event.date);
         const monthKey = date.toLocaleDateString('es-ES', { year: 'numeric', month: 'long' });
         
         if (!eventsByMonth[monthKey]) {
@@ -1511,7 +1495,6 @@ function renderListView() {
                 <div class="events-list" role="list">
                     ${monthEvents.map(event => `
                         <div class="list-event-item" 
-                             onclick="editEventById('${event.id}')"
                              style="border-left-color: ${event.color || '#4facfe'}"
                              role="listitem"
                              tabindex="0"
@@ -1524,6 +1507,11 @@ function renderListView() {
                                 ${event.location ? `<div><strong>Lugar:</strong> ${event.location}</div>` : ''}
                                 ${event.organizer ? `<div><strong>Organizador:</strong> ${event.organizer}</div>` : ''}
                                 ${event.description ? `<div>${event.description}</div>` : ''}
+                            </div>
+                            <div class="list-event-actions">
+                                <button class="btn btn-primary btn-sm" onclick="editEventById('${event.id}')">
+                                    <i class="fas fa-edit"></i> Editar
+                                </button>
                             </div>
                             <div class="list-event-meta">
                                 ${event.guests ? `<span><i class="fas fa-users" aria-hidden="true"></i> ${event.guests.split(',').length} invitados</span>` : ''}
@@ -1541,11 +1529,18 @@ function renderListView() {
         document.querySelectorAll('.list-event-item').forEach(item => {
             setupEventContextMenu(item);
             
+            // CORRECCIÓN: No editar directamente al hacer clic
+            item.addEventListener('click', (e) => {
+                if (!e.target.closest('.btn') && !e.target.closest('.context-menu')) {
+                    item.classList.toggle('expanded');
+                }
+            });
+            
             // Soporte para teclado
             item.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    item.click();
+                    item.classList.toggle('expanded');
                 }
             });
         });
@@ -1624,7 +1619,6 @@ function renderSearchResultsInList() {
         <div class="events-list">
             ${searchResults.map(event => `
                 <div class="list-event-item" 
-                     onclick="editEventById('${event.id}')"
                      style="border-left-color: ${event.color || '#4facfe'}">
                     <div class="list-event-date">
                         ${formatEventDate(event.date)} - ${event.time}
@@ -1634,6 +1628,11 @@ function renderSearchResultsInList() {
                         ${event.location ? `<div><strong>Lugar:</strong> ${highlightSearchTerm(event.location)}</div>` : ''}
                         ${event.organizer ? `<div><strong>Organizador:</strong> ${highlightSearchTerm(event.organizer)}</div>` : ''}
                         ${event.description ? `<div>${highlightSearchTerm(event.description)}</div>` : ''}
+                    </div>
+                    <div class="list-event-actions">
+                        <button class="btn btn-primary btn-sm" onclick="editEventById('${event.id}')">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
                     </div>
                 </div>
             `).join('')}
@@ -1679,7 +1678,6 @@ function showSearchResultsModal() {
                 <div class="events-list">
                     ${searchResults.map(event => `
                         <div class="list-event-item" 
-                             onclick="editEventById('${event.id}'); this.closest('.modal-overlay').remove()"
                              style="border-left-color: ${event.color || '#4facfe'}">
                             <div class="list-event-date">
                                 ${formatEventDate(event.date)} - ${event.time}
@@ -1689,6 +1687,11 @@ function showSearchResultsModal() {
                                 ${event.location ? `<div><strong>Lugar:</strong> ${highlightSearchTerm(event.location)}</div>` : ''}
                                 ${event.organizer ? `<div><strong>Organizador:</strong> ${highlightSearchTerm(event.organizer)}</div>` : ''}
                                 ${event.description ? `<div>${highlightSearchTerm(event.description)}</div>` : ''}
+                            </div>
+                            <div class="list-event-actions">
+                                <button class="btn btn-primary btn-sm" onclick="editEventById('${event.id}'); this.closest('.modal-overlay').remove()">
+                                    <i class="fas fa-edit"></i> Editar
+                                </button>
                             </div>
                         </div>
                     `).join('')}
@@ -1742,14 +1745,14 @@ function clearSearchResults() {
     }
 }
 
-// CONFIGURAR MENÚ CONTEXTUAL PARA DÍAS - MEJORADO
+// CORRECCIÓN: Configurar menú contextual con tiempo aumentado (800ms)
 function setupDayContextMenu(dayElement, dateStr) {
     let pressTimer;
     
     dayElement.addEventListener('touchstart', function(e) {
         pressTimer = setTimeout(() => {
             showDayContextMenu(dateStr, e);
-        }, 500);
+        }, 800); // Aumentado de 500ms a 800ms
     }, { passive: true });
     
     dayElement.addEventListener('touchend', function() {
@@ -1766,7 +1769,7 @@ function setupDayContextMenu(dayElement, dateStr) {
     });
 }
 
-// CONFIGURAR MENÚ CONTEXTUAL PARA EVENTOS - MEJORADO
+// CORRECCIÓN: Configurar menú contextual con tiempo aumentado (800ms)
 function setupEventContextMenu(eventElement) {
     let pressTimer;
     
@@ -1779,7 +1782,7 @@ function setupEventContextMenu(eventElement) {
                     showEventContextMenu(event, e);
                 }
             }
-        }, 500);
+        }, 800); // Aumentado de 500ms a 800ms
     }, { passive: true });
     
     eventElement.addEventListener('touchend', function() {
@@ -1914,18 +1917,18 @@ async function copyEventData() {
     }
 }
 
-// OBTENER EVENTOS PARA FECHA
+// CORRECCIÓN: Obtener eventos para fecha con manejo de zona horaria
 function getEventsForDate(date) {
     if (!events || !Array.isArray(events)) {
         return [];
     }
     
+    const targetDate = normalizeDate(date);
+    
     const dayEvents = events.filter(event => {
         if (!event || !event.date) return false;
         
-        const eventDate = new Date(event.date).toISOString().split('T')[0];
-        const targetDate = new Date(date).toISOString().split('T')[0];
-        
+        const eventDate = normalizeDate(event.date);
         return eventDate === targetDate;
     }).sort((a, b) => {
         const timeA = a.time || '00:00';
@@ -1952,7 +1955,7 @@ function findEventById(eventId) {
     return event;
 }
 
-// SELECCIONAR FECHA - MEJORADO
+// CORRECCIÓN: Seleccionar fecha sin editar directamente
 function selectDate(date, dayElement = null) {
     selectedDate = date;
     
@@ -1977,7 +1980,7 @@ function selectDate(date, dayElement = null) {
     announceToScreenReader(`Seleccionado ${formatEventDate(date)}. ${getEventsForDate(date).length} eventos.`);
 }
 
-// MOSTRAR EVENTOS DEL DÍA - MEJORADO
+// CORRECCIÓN: Mostrar eventos del día con botones de edición
 function showDayEvents(date) {
     const eventsContainer = document.getElementById('dayEvents');
     if (!eventsContainer) return;
@@ -1996,7 +1999,6 @@ function showDayEvents(date) {
     
     eventsContainer.innerHTML = dayEvents.map(event => `
         <div class="event-card" 
-             onclick="editEventById('${event.id}')" 
              style="border-left-color: ${event.color || '#4facfe'}"
              role="listitem"
              tabindex="0"
@@ -2012,19 +2014,31 @@ function showDayEvents(date) {
                 ${event.organizer ? `<div><strong>Organizador:</strong> ${event.organizer}</div>` : ''}
                 ${event.guests ? `<div><strong>Invitados:</strong> ${event.guests}</div>` : ''}
             </div>
+            <div class="event-actions">
+                <button class="btn btn-primary btn-sm" onclick="editEventById('${event.id}')">
+                    <i class="fas fa-edit"></i> Editar
+                </button>
+            </div>
             <div class="copy-hint">Mantén presionado para copiar</div>
         </div>
     `).join('');
     
-    // Agregar event listeners para menú contextual y teclado
+    // CORRECCIÓN: No expandir/contraer al hacer clic, solo con botón de edición
     setTimeout(() => {
         document.querySelectorAll('.event-card').forEach(card => {
             setupEventContextMenu(card);
             
+            card.addEventListener('click', (e) => {
+                // Solo expandir/contraer si no se hace clic en el botón de edición
+                if (!e.target.closest('.btn') && !e.target.closest('.context-menu')) {
+                    card.classList.toggle('expanded');
+                }
+            });
+            
             card.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    card.click();
+                    card.classList.toggle('expanded');
                 }
             });
         });
@@ -2147,6 +2161,7 @@ function showEventModal(event = null) {
     }, 300);
 }
 
+// CORRECCIÓN: Cerrar modal mejorado
 function closeEventModal() {
     const modal = document.getElementById('eventModal');
     if (modal) {
@@ -2161,6 +2176,12 @@ function closeEventModal() {
 // CAMBIAR MES - MEJORADO
 function changeMonth(direction) {
     currentDate.setMonth(currentDate.getMonth() + direction);
+    
+    // CORRECCIÓN: Actualizar semana actual cuando se cambia de mes
+    if (currentView === 'week') {
+        currentWeekStart = getStartOfWeek(new Date(currentDate));
+    }
+    
     loadEventsLazy();
     hideEventsList();
     selectedDate = null;
@@ -2288,7 +2309,7 @@ function clearEventsCache() {
     console.log('🗑️ Cache de eventos limpiado');
 }
 
-// DATOS DE EJEMPLO MEJORADOS
+// CORRECCIÓN: Datos de ejemplo con fechas normalizadas
 function loadSampleData() {
     console.log('📋 Cargando datos de ejemplo...');
     const today = new Date().toISOString().split('T')[0];
